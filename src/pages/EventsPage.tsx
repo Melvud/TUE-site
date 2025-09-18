@@ -39,12 +39,21 @@ function formatMonthKey(d: Date) {
 function formatMonthTitle(d: Date) {
   return new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(d);
 }
-function formatDayRange(r: DateRange) {
-  const sameMonth = r.start.getFullYear() === r.end.getFullYear() && r.start.getMonth() === r.end.getMonth();
-  const day = (d: Date) => d.getDate();
-  return sameMonth ? (day(r.start) === day(r.end) ? `${day(r.start)}` : `${day(r.start)}–${day(r.end)}`) :
-    // если вдруг диапазон на разные месяцы — покажем оба дня с ММ
-    `${r.start.getDate()}/${r.start.getMonth() + 1}–${r.end.getDate()}/${r.end.getMonth() + 1}`;
+// Полная дата: "1 September 2025" или диапазон "1–4 September 2025" (или "30 September 2025 – 2 October 2025", если месяцы/годы разные)
+function formatFullDateRange(r: DateRange) {
+  const sameYear = r.start.getFullYear() === r.end.getFullYear();
+  const sameMonth = sameYear && r.start.getMonth() === r.end.getMonth();
+  if (r.startMs === r.endMs) {
+    return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'long', year: 'numeric' }).format(r.start);
+  }
+  if (sameMonth) {
+    const dayFrom = r.start.getDate();
+    const dayTo = r.end.getDate();
+    const tail = new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(r.start);
+    return `${dayFrom}–${dayTo} ${tail}`;
+  }
+  const fmt = (d: Date) => new Intl.DateTimeFormat('en', { day: 'numeric', month: 'long', year: 'numeric' }).format(d);
+  return `${fmt(r.start)} – ${fmt(r.end)}`;
 }
 
 const EventsPage: React.FC = () => {
@@ -94,35 +103,66 @@ const EventsPage: React.FC = () => {
 
   return (
     <div className="bg-slate-900">
+      {/* Топ заголовок страницы — немного больше */}
       <div className="relative pt-28 pb-8 text-center text-white">
-        <h1 className="text-5xl font-extrabold">PhE Events</h1>
-        <p className="text-xl text-slate-300 mt-4">Discover upcoming events.</p>
+        <h1 className="text-6xl md:text-7xl font-extrabold tracking-tight">PhE Events</h1>
+        <p className="text-2xl text-slate-300 mt-4">Discover upcoming events.</p>
       </div>
 
+      {/* Next Event — кастомный заголовок секции побольше, сама карточка ивента чуть меньше */}
       {nextEvent && (
-        <Section title="Next Event">
-          <EventHero event={nextEvent} showBottomRegister={false} />
+        <Section>
+          <h2 className="text-4xl md:text-5xl font-extrabold text-white text-center mb-6">Next Event</h2>
+          <div className="max-w-6xl mx-auto origin-top scale-[.96] md:scale-[.93] lg:scale-90">
+            <EventHero event={nextEvent} showBottomRegister={false} />
+          </div>
         </Section>
       )}
 
-      <Section title="Upcoming Events">
+      {/* Upcoming Events — заголовок секции тоже чуть крупнее */}
+      <Section>
+        <h2 className="text-4xl md:text-5xl font-extrabold text-white text-center mb-6">Upcoming Events</h2>
+
         {calendarGroups.length === 0 ? (
           <div className="text-slate-400 text-center">No upcoming events yet.</div>
         ) : (
-          <div className="space-y-10">
+          <div className="space-y-12">
             {calendarGroups.map((group) => (
               <div key={group.title}>
-                <div className="text-center text-xl font-semibold text-white">{group.title}</div>
-                <div className="mt-4 flex flex-wrap items-stretch justify-center gap-4">
+                {/* Заголовок месяца — немного побольше */}
+                <div className="text-center text-2xl md:text-3xl font-bold text-white">{group.title}</div>
+
+                {/* Ряд карточек месяца — сами карточки немного крупнее, по центру */}
+                <div className="mt-6 flex flex-wrap items-stretch justify-center gap-6">
                   {group.items.map(({ e, r }) => {
                     const to = e?.id ? `/events/${e.id}` : undefined;
-                    const dayStr = formatDayRange(r);
+                    const fullDate = formatFullDateRange(r);
+                    const img = e?.coverUrl || e?.image || '';
+
                     const content = (
-                      <div className="w-[min(100%,320px)] rounded-xl border border-slate-700 bg-slate-800/40 p-4 hover:bg-slate-800 transition">
-                        <div className="text-2xl font-extrabold text-cyan-300 text-center">{dayStr}</div>
-                        <div className="mt-2 text-center text-white font-semibold leading-snug">{e?.title}</div>
+                      <div className="w-[min(100%,380px)] rounded-2xl border border-slate-700 bg-slate-800/40 p-5 hover:bg-slate-800 transition">
+                        {/* Название сверху */}
+                        <div className="text-lg md:text-xl font-semibold text-white text-center leading-snug">
+                          {e?.title}
+                        </div>
+
+                        {/* Небольшая превью-картинка */}
+                        {img ? (
+                          <img
+                            src={img}
+                            alt={e?.title || 'event cover'}
+                            className="mt-3 w-full h-32 md:h-36 object-cover rounded-lg border border-slate-700"
+                            loading="lazy"
+                          />
+                        ) : null}
+
+                        {/* Полная дата снизу */}
+                        <div className="mt-3 text-center text-sm md:text-base text-slate-300">
+                          {fullDate}
+                        </div>
                       </div>
                     );
+
                     return to ? (
                       <Link key={String(e?.id ?? e?.title)} to={to} className="block">
                         {content}

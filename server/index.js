@@ -42,7 +42,7 @@ async function exists(p) {
 async function initDB() {
   await ensureDir(DATA_DIR);
   if (!(await exists(DB_FILE))) {
-    const init = { events: [], news: [] };
+    const init = { events: [], news: [], members: [], pastMembers: [] };
     await fs.writeFile(DB_FILE, JSON.stringify(init, null, 2), 'utf8');
   }
 }
@@ -54,9 +54,11 @@ async function readDB() {
     return {
       events: Array.isArray(j.events) ? j.events : [],
       news:   Array.isArray(j.news)   ? j.news   : [],
+      members: Array.isArray(j.members) ? j.members : [],
+      pastMembers: Array.isArray(j.pastMembers) ? j.pastMembers : [],
     };
   } catch {
-    return { events: [], news: [] };
+    return { events: [], news: [], members: [], pastMembers: [] };
   }
 }
 
@@ -99,6 +101,15 @@ const EVENT_FIELDS = [
 const NEWS_FIELDS = [
   'title', 'coverUrl', 'summary', 'content', 'published', 'publishAt',
 ];
+
+// Для members
+const MEMBER_FIELDS = [
+  'name', 'role', 'photoUrl', 'email', 'linkedin', 'instagram', 'order',
+];
+
+function sortMembersByOrder(list) {
+  return (Array.isArray(list) ? list : []).slice().sort((a, b) => (a?.order ?? 0) - (b?.order ?? 0));
+}
 
 // ────────────── APP ──────────────
 const app = express();
@@ -265,6 +276,182 @@ app.delete('/api/news/:id', requireAuth, async (req, res) => {
   if (db.news.length === before) return res.status(404).json({ error: 'Not found' });
   await writeDB(db);
   res.status(204).end();
+});
+
+// ────────────── MEMBERS ──────────────
+// PUBLIC
+app.get('/api/members', async (_req, res) => {
+  const db = await readDB();
+  res.json(sortMembersByOrder(db.members));
+});
+app.get('/api/members/past', async (_req, res) => {
+  const db = await readDB();
+  res.json(db.pastMembers);
+});
+
+// ADMIN (чтение)
+app.get('/api/members/admin', requireAuth, async (_req, res) => {
+  const db = await readDB();
+  res.json(sortMembersByOrder(db.members));
+});
+app.get('/api/members/past/admin', requireAuth, async (_req, res) => {
+  const db = await readDB();
+  res.json(db.pastMembers);
+});
+
+// CREATE
+app.post('/api/members', requireAuth, async (req, res) => {
+  const db = await readDB();
+  const now = new Date().toISOString();
+
+  const list = Array.isArray(db.members) ? db.members : [];
+  const nextOrder = (list.reduce((max, m) => Math.max(max, Number(m.order) || 0), 0) || 0) + 1;
+
+  const base = {
+    id: nextId(list),
+    name: '',
+    role: '',
+    photoUrl: '',
+    email: '',
+    linkedin: '',
+    instagram: '',
+    order: nextOrder,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const item = mergeFields(base, (req.body || {}), MEMBER_FIELDS);
+
+  if (!item.name?.trim() || !item.role?.trim() || !item.photoUrl?.trim()) {
+    return res.status(400).json({ error: 'name, role, photoUrl are required' });
+  }
+
+  list.push(item);
+  db.members = sortMembersByOrder(list);
+  await writeDB(db);
+  res.status(201).json(item);
+});
+
+// UPDATE
+app.put('/api/members/:id', requireAuth, async (req, res) => {
+  const db = await readDB();
+  const id = String(req.params.id);
+  const list = Array.isArray(db.members) ? db.members : [];
+  const idx = list.findIndex((m) => String(m.id) === id);
+  if (idx === -1) return res.status(404).json({ error: 'Not found' });
+
+  const before = list[idx];
+  const updated = mergeFields({ ...before }, (req.body || {}), MEMBER_FIELDS);
+  updated.id = before.id;
+  updated.updatedAt = new Date().toISOString();
+
+  list[idx] = updated;
+  db.members = sortMembersByOrder(list);
+  await writeDB(db);
+  res.json(updated);
+});
+
+// DELETE (current members)
+app.delete('/api/members/:id', requireAuth, async (req, res) => {
+  const db = await readDB();
+  const id = String(req.params.id);
+  const list = Array.isArray(db.members) ? db.members : [];
+  const next = list.filter((m) => String(m.id) !== id);
+  if (next.length === list.length) return res.status(404).json({ error: 'Not found' });
+  db.members = sortMembersByOrder(next);
+  await writeDB(db);
+  res.status(204).end();
+});
+
+// MOVE TO PAST
+app.post('/api/members/:id/move-to-past', requireAuth, async (req, res) => {
+  const db = await readDB();
+  const id = String(req.params.id);
+  const list = Array.isArray(db.members) ? db.members : [];
+  const idx = list.findIndex((m) => String(m.id) === id);
+  if (idx === -1) return res.status(404).json({ error: 'Not found' });
+
+  const m = list[idx];
+  list.splice(idx, 1);
+  db.members = sortMembersByOrder(list);
+
+  const pm = Array.isArray(db.pastMembers) ? db.pastMembers : [];
+  pm.push({
+    id: m.id,               // сохраняем тот же id
+    name: m.name,
+    photoUrl: m.photoUrl,
+    createdAt: new Date().toISOString(),
+  });
+  db.pastMembers = pm;
+
+  await writeDB(db);
+  res.json({ ok: true });
+});
+
+// RESTORE FROM PAST
+app.post('/api/past-members/:id/restore', requireAuth, async (req, res) => {
+  const db = await readDB();
+  const id = String(req.params.id);
+
+  const pm = Array.isArray(db.pastMembers) ? db.pastMembers : [];
+  const idx = pm.findIndex((m) => String(m.id) === id);
+  if (idx === -1) return res.status(404).json({ error: 'Not found' });
+
+  const restored = pm[idx];
+  pm.splice(idx, 1);
+  db.pastMembers = pm;
+
+  const list = Array.isArray(db.members) ? db.members : [];
+  // Если по каким-то причинам такой id уже существует в текущих — выдадим новый id
+  const idConflict = list.some((m) => String(m.id) === String(restored.id));
+  const newId = idConflict ? nextId(list) : restored.id;
+
+  const nextOrder = (list.reduce((max, mm) => Math.max(max, Number(mm.order) || 0), 0) || 0) + 1;
+  list.push({
+    id: newId,
+    name: restored.name,
+    role: 'Member',     // дефолт, можно потом отредактировать в админке
+    photoUrl: restored.photoUrl,
+    email: '',
+    linkedin: '',
+    instagram: '',
+    order: nextOrder,
+    createdAt: restored.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  db.members = sortMembersByOrder(list);
+
+  await writeDB(db);
+  res.json({ ok: true });
+});
+
+// DELETE PAST
+app.delete('/api/past-members/:id', requireAuth, async (req, res) => {
+  const db = await readDB();
+  const id = String(req.params.id);
+  const pm = Array.isArray(db.pastMembers) ? db.pastMembers : [];
+  const next = pm.filter((m) => String(m.id) !== id);
+  if (next.length === pm.length) return res.status(404).json({ error: 'Not found' });
+  db.pastMembers = next;
+  await writeDB(db);
+  res.status(204).end();
+});
+
+// REORDER (members)
+app.post('/api/members/reorder', requireAuth, async (req, res) => {
+  const db = await readDB();
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : null;
+  if (!ids || ids.length === 0) return res.status(400).json({ error: 'ids[] required' });
+
+  const orderMap = new Map(ids.map((id, i) => [id, i + 1]));
+  const list = Array.isArray(db.members) ? db.members : [];
+  const next = list.map((m) => ({
+    ...m,
+    order: orderMap.has(String(m.id)) ? orderMap.get(String(m.id)) : (m.order ?? 0),
+    updatedAt: new Date().toISOString(),
+  }));
+  db.members = sortMembersByOrder(next);
+  await writeDB(db);
+  res.json({ ok: true });
 });
 
 // ────────────── HEALTH ──────────────

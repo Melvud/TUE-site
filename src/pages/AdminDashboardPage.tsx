@@ -10,6 +10,9 @@ import {
   apiCreateNews,
   apiUpdateNews,
   apiDelete,
+  apiGet,
+  apiPost,
+  apiPut,
 } from '../api/client';
 
 type EventForm = {
@@ -32,6 +35,18 @@ type NewsForm = {
   summary?: string;
   content: string;
   published: boolean;
+};
+
+// --- Members ---
+type MemberForm = {
+  id?: string | number;
+  name: string;
+  role: string;
+  photoUrl: string;
+  email?: string;
+  linkedin?: string;
+  instagram?: string;
+  order?: number;
 };
 
 const idOf = (x: any) => x?.id ?? x?._id ?? x?.slug ?? null;
@@ -57,6 +72,14 @@ const EMPTY_NEWS: NewsForm = {
   content: '',
   published: false,
 };
+const EMPTY_MEMBER: MemberForm = {
+  name: '',
+  role: '',
+  photoUrl: '',
+  email: '',
+  linkedin: '',
+  instagram: '',
+};
 
 function splitDateRange(s?: string): { start: string; end: string } {
   const val = (s || '').trim();
@@ -78,21 +101,40 @@ const AdminDashboardPage: React.FC = () => {
 
   const [events, setEvents] = useState<any[]>([]);
   const [news, setNews] = useState<any[]>([]);
+  const [members, setMembers] = useState<any[]>([]);
+  const [pastMembers, setPastMembers] = useState<any[]>([]);
+
   const [loading, setLoading] = useState<'idle' | 'loading' | 'error'>('idle');
   const [error, setError] = useState<string>('');
 
   const [ev, setEv] = useState<EventForm>(EMPTY_EVENT);
   const [nw, setNw] = useState<NewsForm>(EMPTY_NEWS);
+  const [mb, setMb] = useState<MemberForm>(EMPTY_MEMBER);
 
   const [{ start: evStart, end: evEnd }, setEvRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
+
+  const adminGet = async <T,>(adminPath: string, publicPath: string): Promise<T> => {
+    if (token) {
+      try { return await apiGet<T>(adminPath, token); }
+      catch { /* fallback */ }
+    }
+    return await apiGet<T>(publicPath);
+  };
 
   const loadAll = async () => {
     setLoading('loading');
     setError('');
     try {
-      const [es, ns] = await Promise.all([apiGetEvents(), apiGetNews()]);
+      const [es, ns, ms, pms] = await Promise.all([
+        apiGetEvents(),
+        apiGetNews(),
+        adminGet<any[]>('/api/members/admin', '/api/members'),
+        adminGet<any[]>('/api/members/past/admin', '/api/members/past'),
+      ]);
       setEvents(Array.isArray(es) ? es : []);
       setNews(Array.isArray(ns) ? ns : []);
+      setMembers((Array.isArray(ms) ? ms : []).sort((a, b) => (a?.order ?? 0) - (b?.order ?? 0)));
+      setPastMembers(Array.isArray(pms) ? pms : []);
       setLoading('idle');
     } catch (e: any) {
       console.error(e);
@@ -107,9 +149,12 @@ const AdminDashboardPage: React.FC = () => {
     setEv((p) => ({ ...p, [k]: v }));
   const setNwField = <K extends keyof NewsForm>(k: K, v: NewsForm[K]) =>
     setNw((p) => ({ ...p, [k]: v }));
+  const setMbField = <K extends keyof MemberForm>(k: K, v: MemberForm[K]) =>
+    setMb((p) => ({ ...p, [k]: v }));
 
   const resetEvent = () => { setEv(EMPTY_EVENT); setEvRange({ start: '', end: '' }); };
   const resetNews = () => setNw(EMPTY_NEWS);
+  const resetMember = () => setMb(EMPTY_MEMBER);
 
   const saveEvent = async () => {
     const date = (evStart && evEnd && `${evStart}..${evEnd}`) || (evStart || '');
@@ -193,7 +238,6 @@ const AdminDashboardPage: React.FC = () => {
       latest: !!it.latest,
     });
   };
-
   const editNews = (it: any) =>
     setNw({
       id: idOf(it) ?? undefined,
@@ -203,6 +247,118 @@ const AdminDashboardPage: React.FC = () => {
       content: it.content || '',
       published: !!it.published,
     });
+
+  // --- Members CRUD ---
+  const saveMember = async () => {
+    if (!mb.name?.trim() || !mb.role?.trim() || !mb.photoUrl?.trim()) {
+      alert('Name, Role and Photo are required');
+      return;
+    }
+    const payload = { ...mb };
+    try {
+      let server;
+      if (payload.id != null) {
+        server = await apiPut(`/api/members/${payload.id}`, payload, token || undefined);
+        setMembers((list) => list.map((it) => (sameId(it, payload) ? (server || { ...it, ...payload }) : it)));
+      } else {
+        server = await apiPost('/api/members', payload, token || undefined);
+        setMembers((list) => (server ? [...list, server] : [...list, payload]));
+      }
+      resetMember();
+      await loadAll();
+    } catch (e: any) {
+      console.error(e);
+      alert('Failed to save member: ' + (e?.message || e));
+    }
+  };
+
+  const editMember = (it: any) => {
+    setMb({
+      id: idOf(it) ?? undefined,
+      name: it.name || '',
+      role: it.role || '',
+      photoUrl: it.photoUrl || it.image || '',
+      email: it.email || '',
+      linkedin: it.linkedin || '',
+      instagram: it.instagram || '',
+      order: it.order,
+    });
+  };
+
+  const deleteMember = async (it?: any) => {
+    const id = idOf(it ?? mb);
+    if (id == null) return;
+    if (!confirm('Delete this member permanently?')) return;
+    try {
+      await apiDelete(`/api/members/${id}`, token || undefined);
+      setMembers((list) => list.filter((x) => !sameId(x, it ?? mb)));
+      if (!it) resetMember();
+      await loadAll();
+    } catch (e: any) {
+      console.error(e);
+      alert('Failed to delete member: ' + (e?.message || e));
+    }
+  };
+
+  const moveToPast = async (it?: any) => {
+    const id = idOf(it ?? mb);
+    if (id == null) return;
+    try {
+      await apiPost(`/api/members/${id}/move-to-past`, {}, token || undefined);
+      await loadAll();
+      if (!it) resetMember();
+    } catch (e: any) {
+      console.error(e);
+      alert('Failed to move member to past: ' + (e?.message || e));
+    }
+  };
+
+  const restoreFromPast = async (id: string | number) => {
+    try {
+      await apiPost(`/api/past-members/${id}/restore`, {}, token || undefined);
+      await loadAll();
+    } catch (e: any) {
+      console.error(e);
+      alert('Failed to restore member: ' + (e?.message || e));
+    }
+  };
+
+  const deletePast = async (id: string | number) => {
+    if (!confirm('Delete this past member permanently?')) return;
+    try {
+      await apiDelete(`/api/past-members/${id}`, token || undefined);
+      await loadAll();
+    } catch (e: any) {
+      console.error(e);
+      alert('Failed to delete past member: ' + (e?.message || e));
+    }
+  };
+
+  // --- Reorder (drag & drop) ---
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const startDrag = (idx: number) => (e: React.DragEvent) => { setDragIdx(idx); e.dataTransfer.effectAllowed = 'move'; };
+  const overDrag = (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
+  const dropDrag = (idx: number) => (e: React.DragEvent) => {
+    e.preventDefault();
+    if (dragIdx == null || dragIdx === idx) return;
+    setMembers((prev) => {
+      const next = [...prev];
+      const [item] = next.splice(dragIdx, 1);
+      next.splice(idx, 0, item);
+      return next;
+    });
+    setDragIdx(null);
+  };
+  const applyOrder = async () => {
+    try {
+      const ids = members.map((m) => idOf(m));
+      await apiPost('/api/members/reorder', { ids }, token || undefined);
+      await loadAll();
+    } catch (e: any) {
+      console.error(e);
+      alert('Failed to save order: ' + (e?.message || e));
+    }
+  };
 
   const fmtDate = (d?: string) => {
     if (!d) return '';
@@ -215,6 +371,7 @@ const AdminDashboardPage: React.FC = () => {
 
   const [searchEv, setSearchEv] = useState('');
   const [searchNews, setSearchNews] = useState('');
+  const [searchMembers, setSearchMembers] = useState('');
   const filteredEvents = useMemo(() => {
     const q = searchEv.trim().toLowerCase();
     if (!q) return events;
@@ -225,9 +382,14 @@ const AdminDashboardPage: React.FC = () => {
     if (!q) return news;
     return news.filter((n) => (n?.title || '').toLowerCase().includes(q));
   }, [news, searchNews]);
+  const filteredMembers = useMemo(() => {
+    const q = searchMembers.trim().toLowerCase();
+    if (!q) return members;
+    return members.filter((m) => (m?.name || '').toLowerCase().includes(q) || (m?.role || '').toLowerCase().includes(q));
+  }, [members, searchMembers]);
 
   // --- tabs ---
-  const [tab, setTab] = useState<'events' | 'news'>('events');
+  const [tab, setTab] = useState<'events' | 'news' | 'members'>('events');
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 px-4 sm:px-6 py-8">
@@ -235,7 +397,7 @@ const AdminDashboardPage: React.FC = () => {
       <div className="flex items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-3xl font-extrabold">Admin Dashboard</h1>
-          <p className="text-slate-400 text-sm mt-1">Manage events & news content</p>
+          <p className="text-slate-400 text-sm mt-1">Manage events, news & members</p>
         </div>
         <div className="flex items-center gap-3">
           <input
@@ -269,30 +431,29 @@ const AdminDashboardPage: React.FC = () => {
       <div className="mb-6 border-b border-slate-700">
         <nav className="flex gap-2">
           <button
-            className={`px-4 py-2 -mb-px border-b-2 ${
-              tab === 'events'
-                ? 'border-cyan-500 text-white'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
+            className={`px-4 py-2 -mb-px border-b-2 ${tab === 'events' ? 'border-cyan-500 text-white' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
             onClick={() => setTab('events')}
           >
             Events
           </button>
           <button
-            className={`px-4 py-2 -mb-px border-b-2 ${
-              tab === 'news'
-                ? 'border-cyan-500 text-white'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
+            className={`px-4 py-2 -mb-px border-b-2 ${tab === 'news' ? 'border-cyan-500 text-white' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
             onClick={() => setTab('news')}
           >
             News
+          </button>
+          <button
+            className={`px-4 py-2 -mb-px border-b-2 ${tab === 'members' ? 'border-cyan-500 text-white' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+            onClick={() => setTab('members')}
+          >
+            Members
           </button>
         </nav>
       </div>
 
       {/* Content */}
       {tab === 'events' ? (
+        // ==== EVENTS TAB (как было) ====
         <section>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Form */}
@@ -463,7 +624,8 @@ const AdminDashboardPage: React.FC = () => {
             </div>
           </div>
         </section>
-      ) : (
+      ) : tab === 'news' ? (
+        // ==== NEWS TAB (как было) ====
         <section>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Form */}
@@ -584,6 +746,246 @@ const AdminDashboardPage: React.FC = () => {
                     </button>
                   ))}
                 </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : (
+        // ==== MEMBERS TAB (новый) ====
+        <section>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Form */}
+            <div className="lg:col-span-2 space-y-4">
+              <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-4">
+                <h2 className="text-xl font-bold mb-4">Members editor</h2>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm mb-1 text-slate-300">Name *</label>
+                    <input
+                      className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2"
+                      placeholder="Full name"
+                      value={mb.name}
+                      onChange={(e) => setMbField('name', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm mb-1 text-slate-300">Role / Position *</label>
+                    <input
+                      className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2"
+                      placeholder="President, Treasurer, ..."
+                      value={mb.role}
+                      onChange={(e) => setMbField('role', e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                  <div className="w-full">
+                    <ImageUploader
+                      value={mb.photoUrl || ''}
+                      onChange={(url) => setMbField('photoUrl', url || '')}
+                      token={token}
+                      label="Photo *"
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm mb-1 text-slate-300">Email (link)</label>
+                      <input
+                        className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2"
+                        placeholder="mailto:example@domain.com"
+                        value={mb.email || ''}
+                        onChange={(e) => setMbField('email', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1 text-slate-300">LinkedIn</label>
+                      <input
+                        className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2"
+                        placeholder="https://www.linkedin.com/in/username"
+                        value={mb.linkedin || ''}
+                        onChange={(e) => setMbField('linkedin', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1 text-slate-300">Instagram</label>
+                      <input
+                        className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2"
+                        placeholder="https://www.instagram.com/username"
+                        value={mb.instagram || ''}
+                        onChange={(e) => setMbField('instagram', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-3 mt-5">
+                  <button
+                    type="button"
+                    className="rounded-lg bg-cyan-600 px-5 py-2 font-semibold text-white hover:bg-cyan-500"
+                    onClick={saveMember}
+                  >
+                    {mb.id ? 'Update member' : 'Create member'}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-lg border border-slate-600 px-5 py-2 hover:bg-slate-800"
+                    onClick={resetMember}
+                  >
+                    Reset
+                  </button>
+                  {mb.id != null && (
+                    <>
+                      <button
+                        type="button"
+                        className="rounded-lg bg-amber-600 px-5 py-2 font-semibold text-white hover:bg-amber-500"
+                        onClick={() => moveToPast()}
+                      >
+                        Move to Past
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-lg bg-rose-600 px-5 py-2 font-semibold text-white hover:bg-rose-500"
+                        onClick={() => deleteMember()}
+                      >
+                        Delete member
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Right column — CURRENT: длинные карточки + d&d */}
+            <div className="lg:col-span-1">
+              <div className="lg:sticky lg:top-6 space-y-6">
+                <div>
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <h3 className="text-lg font-semibold">Current members</h3>
+                    <input
+                      value={searchMembers}
+                      onChange={(e) => setSearchMembers(e.target.value)}
+                      placeholder="Search…"
+                      className="rounded bg-slate-800 border border-slate-700 px-2 py-1 text-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-2 max-h-[58vh] overflow-auto pr-1">
+                    {filteredMembers.length === 0 && (
+                      <div className="text-sm text-slate-400">
+                        {loading === 'loading'
+                          ? 'Loading…'
+                          : 'No members yet. Create the first one.'}
+                      </div>
+                    )}
+
+                    {filteredMembers.map((m, idx) => (
+                      <div
+                        key={String(idOf(m) ?? m.name)}
+                        className="group rounded-xl bg-slate-800/60 border border-slate-700 px-3 py-3 hover:bg-slate-800 cursor-grab active:cursor-grabbing"
+                        draggable
+                        onDragStart={startDrag(idx)}
+                        onDragOver={overDrag}
+                        onDrop={dropDrag(idx)}
+                        title="Drag to reorder"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="pt-1 text-slate-400 w-6 text-right select-none">{idx + 1}.</div>
+                          {m.photoUrl ? (
+                            <img src={m.photoUrl} alt={m.name} className="w-14 h-14 rounded-lg object-cover border border-slate-700" />
+                          ) : (
+                            <div className="w-14 h-14 rounded-lg bg-slate-700 grid place-items-center text-slate-300">N/A</div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold">{m.name}</div>
+                            <div className="text-xs text-slate-400">{m.role}</div>
+                            <ul className="mt-2 text-sm space-y-1">
+                              {m.email && <li className="truncate">Email: <a className="text-cyan-400 hover:text-cyan-300" href={m.email} target="_blank" rel="noreferrer">{m.email}</a></li>}
+                              {m.linkedin && <li className="truncate">LinkedIn: <a className="text-cyan-400 hover:text-cyan-300" href={m.linkedin} target="_blank" rel="noreferrer">{m.linkedin}</a></li>}
+                              {m.instagram && <li className="truncate">Instagram: <a className="text-cyan-400 hover:text-cyan-300" href={m.instagram} target="_blank" rel="noreferrer">{m.instagram}</a></li>}
+                            </ul>
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <button
+                              type="button"
+                              className="rounded-md border border-slate-600 px-2 py-1 text-xs hover:bg-slate-700"
+                              onClick={() => editMember(m)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-md border border-amber-600 text-amber-300 px-2 py-1 text-xs hover:bg-amber-700/20"
+                              onClick={() => moveToPast(m)}
+                            >
+                              To Past
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-md border border-rose-600 text-rose-300 px-2 py-1 text-xs hover:bg-rose-700/20"
+                              onClick={() => deleteMember(m)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      type="button"
+                      className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500"
+                      onClick={applyOrder}
+                    >
+                      Apply order
+                    </button>
+                  </div>
+                </div>
+
+                {/* PAST members */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">Past members</h3>
+                  <div className="space-y-2 max-h-[40vh] overflow-auto pr-1">
+                    {pastMembers.length === 0 && (
+                      <div className="text-sm text-slate-400">Empty</div>
+                    )}
+                    {pastMembers.map((pm) => (
+                      <div
+                        key={String(idOf(pm) ?? pm.name)}
+                        className="rounded-xl bg-slate-800/40 border border-slate-700 px-3 py-3"
+                      >
+                        <div className="flex items-center gap-3">
+                          {pm.photoUrl ? (
+                            <img src={pm.photoUrl} alt={pm.name} className="w-12 h-12 rounded-lg object-cover border border-slate-700" />
+                          ) : (
+                            <div className="w-12 h-12 rounded-lg bg-slate-700 grid place-items-center text-slate-300">N/A</div>
+                          )}
+                          <div className="font-semibold">{pm.name}</div>
+                          <div className="ml-auto flex gap-2">
+                            <button
+                              type="button"
+                              className="rounded-md border border-cyan-600 text-cyan-300 px-2 py-1 text-xs hover:bg-cyan-700/20"
+                              onClick={() => restoreFromPast(idOf(pm))}
+                            >
+                              Restore
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-md border border-rose-600 text-rose-300 px-2 py-1 text-xs hover:bg-rose-700/20"
+                              onClick={() => deletePast(idOf(pm))}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
               </div>
             </div>
           </div>

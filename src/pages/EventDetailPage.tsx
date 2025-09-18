@@ -82,11 +82,7 @@ const EventDetailPage: React.FC = () => {
 
       {/* ======= Content ======= */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6">
-        {event.summary && (
-          <p className="mt-10 text-lg sm:text-xl text-slate-300 leading-relaxed text-center">
-            {event.summary}
-          </p>
-        )}
+        {/* Удалено: краткое описание (summary) под превью */}
 
         {event.content && (
           <article
