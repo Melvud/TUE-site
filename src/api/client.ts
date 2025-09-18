@@ -1,137 +1,156 @@
 // src/api/client.ts
 
-// ============ Определение базового API-адреса ============
-const RAW_API_BASE = (import.meta as any)?.env?.VITE_API_URL || ''; // напр. https://…/api
-const API_BASE = (RAW_API_BASE || '/api').replace(/\/+$/, '');      // обрезаем хвостовые /
-/// origin сервера (для файлов/абс. ссылок)
-const API_ORIGIN = (() => {
-  try {
-    if (/^https?:\/\//i.test(API_BASE)) return new URL(API_BASE).origin;
-  } catch {}
-  // если API_BASE относительный (локальная разработка) — используем origin текущего сайта
-  if (typeof window !== 'undefined' && window.location) return window.location.origin;
-  return '';
-})();
+// ================== Вычисляем адрес API (надёжно) ==================
+const RAW = (import.meta as any)?.env?.VITE_API_URL || ""; // напр. https://tue-site-backend.onrender.com/api
 
-// ============ Утилиты для URL ============
-/** Собирает корректный URL запроса.
- * - если path абсолютный http(s) — возвращаем как есть
- * - если path начинается с /api — клеим к ORIGIN API_BASE (чтобы работало и с абсолютным backend)
- * - иначе клеим к API_BASE (которая уже содержит /api)
- */
-function toApiUrl(path: string): string {
-  if (/^https?:\/\//i.test(path)) return path;
-
-  const p = path.startsWith('/') ? path : `/${path}`;
-
-  if (p.startsWith('/api')) {
-    // Всегда шлём на origin бэкенда (если API_BASE абсолютный) либо на текущий origin (если локально)
-    const origin = API_ORIGIN || (typeof window !== 'undefined' ? window.location.origin : '');
-    return `${origin}${p}`;
+function guessRenderBackendOrigin(): string | null {
+  if (typeof window === "undefined") return null;
+  const { protocol, host } = window.location;
+  // Пример: tue-site-frontend.onrender.com -> tue-site-backend.onrender.com
+  if (/\.onrender\.com$/i.test(host) && /-frontend\./i.test(host)) {
+    return `${protocol}//${host.replace(/-frontend\./i, "-backend.")}`;
   }
-
-  // Стандартный случай: API_BASE уже оканчивается на /api
-  return `${API_BASE}${p}`;
+  return null;
 }
 
-/** Приводит путь файла к абсолютному URL сервера и заставляет использовать /server/uploads/. */
+function splitBase(u: string): { origin: string; prefix: string } {
+  try {
+    if (/^https?:\/\//i.test(u)) {
+      const url = new URL(u);
+      const origin = url.origin; // https://…onrender.com
+      let prefix = url.pathname || "";
+      if (!prefix) prefix = "/api";
+      // гарантируем формат /api (без хвостового /)
+      prefix = "/" + prefix.replace(/^\/+/, "").replace(/\/+$/, "");
+      return { origin, prefix };
+    }
+  } catch {}
+  return { origin: "", prefix: "" };
+}
+
+// 1) Если VITE_API_URL задана и абсолютная — используем её.
+let ORIGIN = "";
+let API_PREFIX = "/api";
+if (RAW) {
+  const { origin, prefix } = splitBase(RAW);
+  if (origin) {
+    ORIGIN = origin;
+    API_PREFIX = prefix || "/api";
+  }
+}
+
+// 2) Если переменная не подхватилась — пробуем угадать Render-бэкенд.
+if (!ORIGIN && typeof window !== "undefined") {
+  const guessed = guessRenderBackendOrigin();
+  if (guessed) {
+    ORIGIN = guessed;
+    API_PREFIX = "/api";
+  }
+}
+
+// 3) Фолбэк: локальная разработка (Vite proxy)
+if (!ORIGIN && typeof window !== "undefined") {
+  ORIGIN = window.location.origin; // http://localhost:5173
+  API_PREFIX = "/api"; // пойдёт через Vite proxy к Node
+}
+
+// Собираем окончательный базовый адрес (без хвостового /)
+function joinApi(path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  // убираем повторное /api у path, т.к. у нас есть API_PREFIX
+  const trimmed = p.replace(/^\/api(\/|$)/, "/");
+  return `${ORIGIN}${API_PREFIX}${trimmed}`.replace(/(?<!:)\/{2,}/g, "/").replace(/^https?:\//, (m) => m + "/");
+}
+
+// ================== Утилиты для файлов ==================
 export function toFileUrl(u?: string): string | undefined {
   if (!u) return u;
-
-  // 1) абсолютная ссылка
-  if (/^https?:\/\//i.test(u)) {
-    try {
+  try {
+    if (/^https?:\/\//i.test(u)) {
       const url = new URL(u);
-      // заменяем /uploads/ на /server/uploads/
-      url.pathname = url.pathname.replace(/\/uploads\//, '/server/uploads/');
+      url.pathname = url.pathname.replace(/\/uploads\//, "/server/uploads/");
       return url.toString();
-    } catch {
-      return u;
     }
+    let path = u.startsWith("/") ? u : `/${u}`;
+    path = path.replace(/^\/uploads\//, "/server/uploads/");
+    if (!/^\/server\/uploads\//.test(path)) {
+      path = `/server/uploads/${path.replace(/^\/+/, "")}`;
+    }
+    return `${ORIGIN}${path}`;
+  } catch {
+    return u;
   }
-
-  // 2) относительный путь
-  let path = u.startsWith('/') ? u : `/${u}`;
-  path = path.replace(/^\/uploads\//, '/server/uploads/'); // принудительно /server/uploads/
-  if (!/^\/server\/uploads\//.test(path)) {
-    // если пришло просто имя файла — добавим префикс
-    path = `/server/uploads/${path.replace(/^\/+/, '')}`;
-  }
-  return `${API_ORIGIN}${path}`;
 }
 
-/** Заменяет в HTML все src="/uploads/…" и абсолютные …/uploads/… на абсолютные ссылки /server/uploads/… от API_ORIGIN */
 export function fixUploadsInHtml(html?: string): string | undefined {
   if (!html) return html;
   try {
     return html
-      .replace(/src="\/uploads\//g, `src="${API_ORIGIN}/server/uploads/`)
-      .replace(/src="https?:\/\/[^"]+\/uploads\//g, `src="${API_ORIGIN}/server/uploads/`)
-      .replace(/src="\/server\/uploads\//g, `src="${API_ORIGIN}/server/uploads/`)
-      .replace(/src="https?:\/\/[^"]+\/server\/uploads\//g, `src="${API_ORIGIN}/server/uploads/`);
+      .replace(/src="\/uploads\//g, `src="${ORIGIN}/server/uploads/`)
+      .replace(/src="https?:\/\/[^"]+\/uploads\//g, `src="${ORIGIN}/server/uploads/`)
+      .replace(/src="\/server\/uploads\//g, `src="${ORIGIN}/server/uploads/`)
+      .replace(/src="https?:\/\/[^"]+\/server\/uploads\//g, `src="${ORIGIN}/server/uploads/`);
   } catch {
     return html;
   }
 }
 
-// ============ Базовые fetch-помощники ============
+// ================== Базовые fetch-помощники ==================
 function withAuth(headers: HeadersInit = {}, token?: string) {
   const h = new Headers(headers);
-  if (token) h.set('Authorization', `Bearer ${token}`);
+  if (token) h.set("Authorization", `Bearer ${token}`);
   return h;
 }
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   if (!res.ok) {
-    // Попробуем достать осмысленную ошибку
-    const ct = res.headers.get('content-type') || '';
-    if (ct.includes('application/json')) {
+    const ct = res.headers.get("content-type") || "";
+    if (ct.includes("application/json")) {
       const j = await res.json().catch(() => null);
       const msg = (j && (j.error || j.message)) || `HTTP ${res.status}: ${res.statusText}`;
       throw new Error(msg);
     } else {
-      const t = await res.text().catch(() => '');
+      const t = await res.text().catch(() => "");
       throw new Error(t || `HTTP ${res.status}: ${res.statusText}`);
     }
   }
-  const ct = res.headers.get('content-type') || '';
-  if (ct.includes('application/json')) return (await res.json()) as T;
-  // нет тела — вернём undefined как T
+  const ct = res.headers.get("content-type") || "";
+  if (ct.includes("application/json")) return (await res.json()) as T;
   return undefined as unknown as T;
 }
 
-// ============ Публичные API-функции ============
+// ================== Универсальные API-методы ==================
 export async function apiGet<T>(path: string, token?: string): Promise<T> {
-  return fetchJSON<T>(toApiUrl(path), {
+  return fetchJSON<T>(joinApi(path), {
     headers: withAuth({}, token),
-    credentials: 'include',
+    credentials: "include",
   });
 }
 
 export async function apiPost<T>(path: string, body?: any, token?: string): Promise<T> {
-  return fetchJSON<T>(toApiUrl(path), {
-    method: 'POST',
-    headers: withAuth({ 'Content-Type': 'application/json' }, token),
+  return fetchJSON<T>(joinApi(path), {
+    method: "POST",
+    headers: withAuth({ "Content-Type": "application/json" }, token),
     body: JSON.stringify(clean(body ?? {})),
-    credentials: 'include',
+    credentials: "include",
   });
 }
 
 export async function apiPut<T>(path: string, body?: any, token?: string): Promise<T> {
-  return fetchJSON<T>(toApiUrl(path), {
-    method: 'PUT',
-    headers: withAuth({ 'Content-Type': 'application/json' }, token),
+  return fetchJSON<T>(joinApi(path), {
+    method: "PUT",
+    headers: withAuth({ "Content-Type": "application/json" }, token),
     body: JSON.stringify(clean(body ?? {})),
-    credentials: 'include',
+    credentials: "include",
   });
 }
 
 export async function apiDelete(path: string, token?: string): Promise<void> {
-  await fetchJSON<void>(toApiUrl(path), {
-    method: 'DELETE',
+  await fetchJSON<void>(joinApi(path), {
+    method: "DELETE",
     headers: withAuth({}, token),
-    credentials: 'include',
+    credentials: "include",
   });
 }
 
@@ -143,27 +162,7 @@ function clean<T extends object>(obj: T): T {
   return o as T;
 }
 
-// ============ Загрузка файлов ============
-/** Отправляет файл на POST /api/upload, возвращает абсолютный URL вида https://…/server/uploads/xxx */
-export async function apiUploadFile(file: File, token?: string): Promise<string> {
-  const fd = new FormData();
-  fd.append('file', file);
-
-  const resp = await fetchJSON<{ url: string }>(toApiUrl('/api/upload'), {
-    method: 'POST',
-    headers: withAuth({}, token), // не задаём Content-Type вручную для FormData
-    body: fd,
-    credentials: 'include',
-  });
-
-  const fileUrl = resp?.url;
-  if (!fileUrl) throw new Error('Upload response has no "url"');
-
-  // Нормализуем к абсолютному URL
-  return toFileUrl(fileUrl)!;
-}
-
-// ============ Удобные врапперы для событий/новостей ============
+// ================== Обёртки для доменной логики ==================
 export type EventPayload = {
   id?: string | number;
   title: string;
@@ -187,30 +186,30 @@ export type NewsPayload = {
   publishAt?: string;
 };
 
-export const apiGetEvents = () => apiGet<EventPayload[]>('/api/events');
-export const apiGetNews   = () => apiGet<NewsPayload[]>('/api/news');
+export const apiGetEvents      = () => apiGet<EventPayload[]>("/events");
+export const apiGetNews        = () => apiGet<NewsPayload[]>("/news");
+export const apiCreateEvent    = (d: EventPayload, token?: string) => apiPost<EventPayload>("/events", d, token);
+export const apiUpdateEvent    = (id: string | number, d: EventPayload, token?: string) => apiPut<EventPayload>(`/events/${id}`, d, token);
+export const apiDeleteEvent    = (id: string | number, token?: string) => apiDelete(`/events/${id}`, token);
+export const apiCreateNews     = (d: NewsPayload, token?: string) => apiPost<NewsPayload>("/news", d, token);
+export const apiUpdateNews     = (id: string | number, d: NewsPayload, token?: string) => apiPut<NewsPayload>(`/news/${id}`, d, token);
+export const apiDeleteNews     = (id: string | number, token?: string) => apiDelete(`/news/${id}`, token);
 
-export const apiCreateEvent = (data: EventPayload, token?: string) =>
-  apiPost<EventPayload>('/api/events', data, token);
+// Upload (вернёт абсолютный URL файла вида https://…/server/uploads/xxx)
+export async function apiUploadFile(file: File, token?: string): Promise<string> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const resp = await fetchJSON<{ url: string }>(joinApi("/upload"), {
+    method: "POST",
+    headers: withAuth({}, token),
+    body: fd,
+    credentials: "include",
+  });
+  return toFileUrl(resp.url)!;
+}
 
-export const apiUpdateEvent = (id: string | number, data: EventPayload, token?: string) =>
-  apiPut<EventPayload>(`/api/events/${id}`, data, token);
-
-export const apiCreateNews = (data: NewsPayload, token?: string) =>
-  apiPost<NewsPayload>('/api/news', data, token);
-
-export const apiUpdateNews = (id: string | number, data: NewsPayload, token?: string) =>
-  apiPut<NewsPayload>(`/api/news/${id}`, data, token);
-
-export const apiDeleteEvent = (id: string | number, token?: string) =>
-  apiDelete(`/api/events/${id}`, token);
-
-export const apiDeleteNews = (id: string | number, token?: string) =>
-  apiDelete(`/api/news/${id}`, token);
-
-// ============ Отладочная подсказка в консоль ============
-if (typeof window !== 'undefined') {
-  const resolved = /^https?:\/\//i.test(API_BASE) ? API_BASE : `${window.location.origin}${API_BASE}`;
+// ================== Отладочная подсказка ==================
+if (typeof window !== "undefined") {
   // eslint-disable-next-line no-console
-  console.debug('[client] API_BASE =', resolved);
+  console.debug("[client] API = ", `${ORIGIN}${API_PREFIX}`);
 }
