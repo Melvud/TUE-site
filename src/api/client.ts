@@ -10,14 +10,14 @@
 
 // ======================= Конфигурация =======================
 const RAW_BASE =
-  (import.meta as any)?.env?.VITE_API_URL || 'http://localhost:3000/api';
+  (import.meta as any)?.env?.VITE_API_URL || 'https://tue-site-backend.onrender.com/api';
 
 const API_BASE = RAW_BASE.replace(/\/+$/, ''); // http://localhost:3001/api
 const API_ORIGIN = (() => {
   try {
     return new URL(API_BASE).origin; // http://localhost:3001
   } catch {
-    return 'http://localhost:3000';
+    return 'https://tue-site-backend.onrender.com/api';
   }
 })();
 
