@@ -1,4 +1,4 @@
-
+// src/App.tsx
 import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Header from './components/Header';
@@ -17,35 +17,37 @@ import { useData } from './context/DataContext';
 
 const AdminRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
   const { isAuthenticated } = useData();
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
   return children;
 };
 
 const App: React.FC = () => {
   return (
     <Router>
-      <div className="bg-slate-900 text-white min-h-screen flex flex-col">
+      <div className="min-h-screen bg-slate-900 text-white flex flex-col">
         <Header />
-        <main className="flex-grow">
+        <main className="flex-1">
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/about" element={<AboutPage />} />
+
             <Route path="/events" element={<EventsPage />} />
             <Route path="/events/:id" element={<EventDetailPage />} />
+
             <Route path="/news" element={<NewsPage />} />
             <Route path="/news/:id" element={<NewsDetailPage />} />
+
             <Route path="/join" element={<JoinUsPage />} />
             <Route path="/contact" element={<ContactPage />} />
+
             <Route path="/login" element={<AdminLoginPage />} />
-            <Route 
-              path="/admin" 
+            <Route
+              path="/admin"
               element={
                 <AdminRoute>
                   <AdminDashboardPage />
                 </AdminRoute>
-              } 
+              }
             />
           </Routes>
         </main>

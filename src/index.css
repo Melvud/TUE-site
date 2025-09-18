@@ -1,0 +1,175 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --------- Global base --------- */
+:root {
+  /* Цвета под темing (совместимы с текущей палитрой Tailwind) */
+  --bg: #0f172a;          /* slate-900 */
+  --fg: #e2e8f0;          /* slate-200 */
+  --muted: #94a3b8;       /* slate-400 */
+  --link: #22d3ee;        /* cyan-400 */
+  --link-hover: #06b6d4;  /* cyan-500 */
+}
+
+/* TipTap content tweaks */
+.tiptap :first-child { margin-top: 0; }
+.tiptap p { margin: 0.6rem 0; }
+.tiptap h1, .tiptap h2, .tiptap h3 { font-weight: 800; line-height: 1.2; margin: 1.2rem 0 0.6rem; }
+.tiptap ul { list-style: disc; padding-left: 1.25rem; margin: 0.5rem 0; }
+.tiptap ol { list-style: decimal; padding-left: 1.25rem; margin: 0.5rem 0; }
+.tiptap img { max-width: 100%; height: auto; border-radius: 0.5rem; margin: 0.5rem 0; }
+.tiptap a { text-decoration: underline; }
+
+/* Tables */
+.tiptap table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.tiptap table td, .tiptap table th {
+  border: 1px solid rgba(148,163,184,.25);
+  padding: .5rem;
+  vertical-align: top;
+}
+.tiptap table th { background: rgba(148,163,184,.08); font-weight: 700; }
+
+/* Task list */
+.tiptap ul[data-type="taskList"] { list-style: none; padding: 0; }
+.tiptap ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: .5rem; }
+.tiptap ul[data-type="taskList"] li > label { margin-top: .25rem; }
+
+/* Code block */
+.tiptap pre {
+  background: rgba(148,163,184,.12);
+  border: 1px solid rgba(148,163,184,.25);
+  border-radius: .5rem;
+  padding: .75rem 1rem;
+  overflow: auto;
+}
+.tiptap code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Ссылки подчеркиваем чуть ниже текста */
+a {
+  text-underline-offset: 2px;
+}
+
+/* --------- Prose fallback (если не подключен @tailwind/typography) --------- */
+.prose {
+  line-height: 1.75;
+  color: var(--fg);
+}
+
+.prose p + p {
+  margin-top: 1rem;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+  font-weight: 800;
+  line-height: 1.2;
+  margin: 1.5rem 0 0.75rem;
+}
+
+.prose h1 { font-size: 2rem; }
+.prose h2 { font-size: 1.5rem; }
+.prose h3 { font-size: 1.25rem; }
+
+.prose a {
+  color: var(--link);
+  text-decoration: underline;
+}
+.prose a:hover {
+  color: var(--link-hover);
+}
+
+.prose ul {
+  list-style: disc;
+  margin-left: 1.25rem;
+}
+.prose ol {
+  list-style: decimal;
+  margin-left: 1.25rem;
+}
+.prose li { margin: 0.25rem 0; }
+
+.prose img {
+  border-radius: 0.5rem;
+  max-width: 100%;
+  height: auto;
+}
+
+.prose code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.9em;
+  background: rgba(148, 163, 184, 0.15);
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.375rem;
+}
+
+.prose pre {
+  background: rgba(148, 163, 184, 0.15);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+.prose blockquote {
+  border-left: 4px solid rgba(148, 163, 184, 0.5);
+  padding-left: 1rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.prose table { width: 100%; border-collapse: collapse; }
+.prose th,
+.prose td {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 0.5rem;
+  text-align: left;
+}
+
+/* Инверсные цвета под темную тему */
+.prose-invert { color: var(--fg); }
+.prose-invert a { color: var(--link); }
+.prose-invert a:hover { color: var(--link-hover); }
+.prose-invert code,
+.prose-invert pre { background: rgba(148, 163, 184, 0.15); }
+.prose-invert blockquote {
+  border-left-color: rgba(148, 163, 184, 0.5);
+  color: var(--muted);
+}
+
+/* --------- Accessibility / UX --------- */
+:focus-visible {
+  outline: 2px solid #22d3ee; /* cyan-400 */
+  outline-offset: 2px;
+}
+
+/* Чище number inputs на WebKit/Firefox */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] { -moz-appearance: textfield; }
+
+/* Небольшой helper-контейнер (если вдруг понадобится) */
+.container {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+@media (min-width: 1024px) {
+  .container { max-width: 980px; }
+}
