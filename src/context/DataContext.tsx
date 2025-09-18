@@ -44,19 +44,15 @@ function usePersistedToken() {
 }
 
 // Нормализация путей картинок и контента под /uploads/
-function normalizeEvent(e: Event): Event {
-  return {
-    ...e,
-    coverUrl: (toFileUrl((e as any).coverUrl) as any) ?? (e as any).coverUrl,
-    content: (fixUploadsInHtml((e as any).content) as any) ?? (e as any).content,
-  };
+function normalizeEvent(e: any): Event {
+  const cover = toFileUrl(e?.coverUrl) ?? e?.coverUrl;
+  const html = fixUploadsInHtml(e?.content) ?? e?.content;
+  return { ...(e || {}), coverUrl: cover, content: html };
 }
-function normalizeNews(n: News): News {
-  return {
-    ...n,
-    coverUrl: (toFileUrl((n as any).coverUrl) as any) ?? (n as any).coverUrl,
-    content: (fixUploadsInHtml((n as any).content) as any) ?? (n as any).content,
-  };
+function normalizeNews(n: any): News {
+  const cover = toFileUrl(n?.coverUrl) ?? n?.coverUrl;
+  const html = fixUploadsInHtml(n?.content) ?? n?.content;
+  return { ...(n || {}), coverUrl: cover, content: html };
 }
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -73,7 +69,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (isAuthenticated && token) {
       try {
         return await apiGet<T>(adminPath, token);
-      } catch { /* fallback ниже */ }
+      } catch {
+        // 404/ошибка — используем публичный
+      }
     }
     return await apiGet<T>(publicPath);
   };
@@ -82,13 +80,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       const [n, e] = await Promise.all([
-        getWithFallback<News[]>('/api/news/admin', '/api/news'),
-        getWithFallback<Event[]>('/api/events/admin', '/api/events'),
+        getWithFallback<any[]>('/api/news/admin', '/api/news'),
+        getWithFallback<any[]>('/api/events/admin', '/api/events'),
       ]);
-      const nn = (Array.isArray(n) ? n : []).map(normalizeNews);
-      const ee = (Array.isArray(e) ? e : []).map(normalizeEvent);
+
+      const nn = (Array.isArray(n) ? n : [])
+        .filter((x) => x && typeof x === 'object')
+        .map(normalizeNews);
+
+      const ee = (Array.isArray(e) ? e : [])
+        .filter((x) => x && typeof x === 'object')
+        .map(normalizeEvent);
+
       setNews(nn);
       setEvents(ee);
+    } catch {
+      // В случае любой ошибки не валим рендер — просто отдаём пустые списки
+      setNews([]);
+      setEvents([]);
     } finally {
       setLoading(false);
     }
@@ -97,17 +106,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => { void load(); }, [isAuthenticated]);
 
   const login = async (email: string, password: string) => {
-    const { token: t, user } = await apiPost<{ token: string; user: AuthUser }>(
-      '/api/auth/login',
-      { email, password }
-    );
-    setToken(t);
-    setUser(user);
+    const resp = await apiPost<{ token: string; user: AuthUser }>('/api/auth/login', { email, password });
+    if (!resp || !resp.token) throw new Error('Login failed');
+    setToken(resp.token);
+    setUser(resp.user);
+    await load();
   };
 
   const logout = () => {
     setToken(null);
     setUser(null);
+    void load();
   };
 
   const createEvent = async (payload: Partial<Event>) => {
