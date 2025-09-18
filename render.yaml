@@ -3,8 +3,8 @@ services:
     name: tue-site-backend
     env: node
     plan: free
-    buildCommand: "npm install"
-    startCommand: "node server/index.js"
+    buildCommand: "cd server && npm install"
+    startCommand: "node index.js"
     envVars:
       - key: ADMIN_TOKEN
         value: admin-secret
@@ -18,7 +18,6 @@ services:
   - type: web
     name: tue-site-frontend
     env: static
-    plan: free
     buildCommand: "npm install && npm run build"
     staticPublishPath: dist
     envVars:
