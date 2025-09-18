@@ -9,12 +9,14 @@ import {
   apiGetNews,
   apiCreateNews,
   apiUpdateNews,
+  apiDelete, // ⬅ добавили для удаления
 } from '../api/client';
 
 // ===== Типы формы (без расписания публикации) =====
 type EventForm = {
   id?: string | number;
   title: string;
+  // Храним итоговую строку: "YYYY-MM-DD" или "YYYY-MM-DD..YYYY-MM-DD"
   date?: string;
   coverUrl?: string | null;
   googleFormUrl?: string;
@@ -59,6 +61,21 @@ const EMPTY_NEWS: NewsForm = {
   published: false,
 };
 
+// Вспомогательная функция: парсим сохранённую строку даты в start/end
+function splitDateRange(s?: string): { start: string; end: string } {
+  const val = (s || '').trim();
+  if (!val) return { start: '', end: '' };
+  if (val.includes('..')) {
+    const [a, b] = val.split('..').map((x) => x.trim());
+    return { start: a || '', end: b || '' };
+  }
+  if (val.includes(' - ')) {
+    const [a, b] = val.split(' - ').map((x) => x.trim());
+    return { start: a || '', end: b || '' };
+  }
+  return { start: val, end: '' };
+}
+
 const AdminDashboardPage: React.FC = () => {
   // ======= Токен администратора =======
   const [token, setToken] = useState<string>(localStorage.getItem('token') || '');
@@ -75,6 +92,9 @@ const AdminDashboardPage: React.FC = () => {
   // ======= Формы =======
   const [ev, setEv] = useState<EventForm>(EMPTY_EVENT);
   const [nw, setNw] = useState<NewsForm>(EMPTY_NEWS);
+
+  // Для диапазона дат (start/end) — склеим в ev.date при сохранении
+  const [{ start: evStart, end: evEnd }, setEvRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
 
   // ======= Загрузка данных из /api (db.json) =======
   const loadAll = async () => {
@@ -102,12 +122,20 @@ const AdminDashboardPage: React.FC = () => {
   const setNwField = <K extends keyof NewsForm>(k: K, v: NewsForm[K]) =>
     setNw((p) => ({ ...p, [k]: v }));
 
-  const resetEvent = () => setEv(EMPTY_EVENT);
+  const resetEvent = () => {
+    setEv(EMPTY_EVENT);
+    setEvRange({ start: '', end: '' });
+  };
   const resetNews = () => setNw(EMPTY_NEWS);
 
   // ======= Сохранение/обновление =======
   const saveEvent = async () => {
-    const payload = { ...ev };
+    // Собираем строку даты из start/end
+    const date =
+      (evStart && evEnd && `${evStart}..${evEnd}`) ||
+      (evStart || '');
+
+    const payload = { ...ev, date };
     try {
       if (payload.id != null) {
         const server = await apiUpdateEvent(payload.id, payload, token || undefined);
@@ -146,8 +174,41 @@ const AdminDashboardPage: React.FC = () => {
     }
   };
 
+  // ======= Удаление =======
+  const removeEvent = async () => {
+    const id = ev.id ?? idOf(ev);
+    if (id == null) return;
+    if (!confirm('Delete this event permanently?')) return;
+    try {
+      await apiDelete(`/api/events/${id}`, token || undefined);
+      setEvents((list) => list.filter((it) => !sameId(it, ev)));
+      resetEvent();
+      await loadAll();
+    } catch (e: any) {
+      console.error(e);
+      alert('Failed to delete event: ' + (e?.message || e));
+    }
+  };
+
+  const removeNews = async () => {
+    const id = nw.id ?? idOf(nw);
+    if (id == null) return;
+    if (!confirm('Delete this news item permanently?')) return;
+    try {
+      await apiDelete(`/api/news/${id}`, token || undefined);
+      setNews((list) => list.filter((it) => !sameId(it, nw)));
+      resetNews();
+      await loadAll();
+    } catch (e: any) {
+      console.error(e);
+      alert('Failed to delete news: ' + (e?.message || e));
+    }
+  };
+
   // ======= Заполнение формы для редактирования =======
-  const editEvent = (it: any) =>
+  const editEvent = (it: any) => {
+    const { start, end } = splitDateRange(it?.date);
+    setEvRange({ start, end });
     setEv({
       id: idOf(it) ?? undefined,
       title: it.title || '',
@@ -159,6 +220,7 @@ const AdminDashboardPage: React.FC = () => {
       published: !!it.published,
       latest: !!it.latest,
     });
+  };
 
   const editNews = (it: any) =>
     setNw({
@@ -173,9 +235,13 @@ const AdminDashboardPage: React.FC = () => {
   // ======= Удобный вывод даты в списках =======
   const fmtDate = (d?: string) => {
     if (!d) return '';
-    const dd = new Date(d);
-    return isNaN(+dd) ? String(d) : dd.toISOString().slice(0, 10);
+    const { start, end } = splitDateRange(d);
+    const toIso = (s: string) => {
+      const dd = new Date(s);
+      return isNaN(+dd) ? String(s) : dd.toISOString().slice(0, 10);
     };
+    return end ? `${toIso(start)}..${toIso(end)}` : toIso(start);
+  };
 
   // ======= Фильтры/поиск =======
   const [searchEv, setSearchEv] = useState('');
@@ -237,15 +303,29 @@ const AdminDashboardPage: React.FC = () => {
               onChange={(e) => setEvField('title', e.target.value)}
             />
 
+            {/* диапазон дат */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <input
                 type="date"
                 className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2"
-                value={ev.date || ''}
-                onChange={(e) => setEvField('date', e.target.value)}
+                value={evStart}
+                onChange={(e) => setEvRange((p) => ({ ...p, start: e.target.value }))}
+                placeholder="Start date"
               />
+              <input
+                type="date"
+                className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2"
+                value={evEnd}
+                onChange={(e) => setEvRange((p) => ({ ...p, end: e.target.value }))}
+                placeholder="End date (optional)"
+              />
+            </div>
+            <div className="text-xs text-slate-400 -mt-2">
+              Leave <em>End date</em> empty for a single-day event. Saved as <code>YYYY-MM-DD</code> or <code>YYYY-MM-DD..YYYY-MM-DD</code>.
+            </div>
 
-              {/* ☑️ Загрузка обложки (выбор файла или перетаскивание) */}
+            {/* обложка */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="w-full">
                 <ImageUploader
                   value={ev.coverUrl || ''}
@@ -254,14 +334,13 @@ const AdminDashboardPage: React.FC = () => {
                   label="Cover image"
                 />
               </div>
+              <input
+                className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2"
+                placeholder="Google Form URL (for Register button)"
+                value={ev.googleFormUrl || ''}
+                onChange={(e) => setEvField('googleFormUrl', e.target.value)}
+              />
             </div>
-
-            <input
-              className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2"
-              placeholder="Google Form URL (for Register button)"
-              value={ev.googleFormUrl || ''}
-              onChange={(e) => setEvField('googleFormUrl', e.target.value)}
-            />
 
             <textarea
               className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2"
@@ -317,6 +396,15 @@ const AdminDashboardPage: React.FC = () => {
               >
                 Reset
               </button>
+              {ev.id != null && (
+                <button
+                  type="button"
+                  className="rounded-lg bg-rose-600 px-5 py-2 font-semibold text-white hover:bg-rose-500"
+                  onClick={removeEvent}
+                >
+                  Delete event
+                </button>
+              )}
             </div>
           </div>
 
@@ -429,6 +517,15 @@ const AdminDashboardPage: React.FC = () => {
               >
                 Reset
               </button>
+              {nw.id != null && (
+                <button
+                  type="button"
+                  className="rounded-lg bg-rose-600 px-5 py-2 font-semibold text-white hover:bg-rose-500"
+                  onClick={removeNews}
+                >
+                  Delete news
+                </button>
+              )}
             </div>
           </div>
 
