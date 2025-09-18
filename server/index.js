@@ -6,7 +6,6 @@ import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import fs from 'fs/promises';
-import fssync from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -17,10 +16,10 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DATA_DIR = path.join(__dirname, 'Data');          // ВАЖНО: server/Data
+const DATA_DIR = path.join(__dirname, 'data');          // server/data
 const DB_FILE  = path.join(DATA_DIR, 'db.json');
 
-const UPLOADS_DIR = path.join(__dirname, 'uploads');    // ВАЖНО: server/uploads
+const UPLOADS_DIR = path.join(__dirname, 'uploads');    // server/uploads
 
 // ────────────── ENV ──────────────
 const PORT = Number(process.env.PORT || 3000);
@@ -106,10 +105,9 @@ const app = express();
 app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 
-// Статические файлы: доступны и по /uploads/*, и по /server/uploads/* (как просили)
+// Статические файлы: только /uploads/*
 await ensureDir(UPLOADS_DIR);
 app.use('/uploads', express.static(UPLOADS_DIR));
-app.use('/server/uploads', express.static(UPLOADS_DIR)); // <— чтобы URL содержал /server/uploads
 
 // ────────────── UPLOADS ──────────────
 const storage = multer.diskStorage({
@@ -124,12 +122,11 @@ const upload = multer({ storage });
 
 app.post('/api/upload', requireAuth, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file' });
-  // Возвращаем URL именно с /server/uploads, как требуется на страницах
-  return res.json({ url: `/server/uploads/${req.file.filename}` });
+  // Возвращаем URL именно с /uploads/
+  return res.json({ url: `/uploads/${req.file.filename}` });
 });
 
 // ────────────── AUTH ──────────────
-// Форма логина ждёт { token, user }, иначе DataContext упадёт.
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body || {};
   if (String(email) === ADMIN_EMAIL && String(password) === ADMIN_PASSWORD) {
@@ -158,7 +155,7 @@ app.get('/api/events/:id', async (req, res) => {
   res.json(item);
 });
 
-// ADMIN list (для админки)
+// ADMIN list
 app.get('/api/events/admin', requireAuth, async (_req, res) => {
   const db = await readDB();
   res.json(db.events);
@@ -173,7 +170,6 @@ app.post('/api/events', requireAuth, async (req, res) => {
     EVENT_FIELDS
   );
 
-  // Обеспечить уникальный latest
   if (item.latest) {
     db.events = db.events.map((e) => ({ ...e, latest: false }));
   }
@@ -226,7 +222,6 @@ app.get('/api/news/:id', async (req, res) => {
   res.json(item);
 });
 
-// ADMIN list (для админки)
 app.get('/api/news/admin', requireAuth, async (_req, res) => {
   const db = await readDB();
   res.json(db.news);
@@ -285,6 +280,6 @@ app.listen(PORT, () => {
   console.log(`API running on http://localhost:${PORT}`);
   console.log(`CORS allowed origin: ${CORS_ORIGIN}`);
   console.log(`DB file: ${DB_FILE}`);
-  console.log(`Uploads served at: /uploads/* and /server/uploads/*`);
+  console.log(`Uploads served at: /uploads/*`);
   console.log(`Admin: ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}`);
 });
