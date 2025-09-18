@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { EditorContent, useEditor } from '@tiptap/react';
+import {
+  EditorContent,
+  useEditor,
+} from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import { BubbleMenu } from '@tiptap/react/menus'
+import { FloatingMenu } from '@tiptap/react/menus'
 import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
 import Underline from '@tiptap/extension-underline';
@@ -13,8 +18,11 @@ import Subscript from '@tiptap/extension-subscript';
 import Superscript from '@tiptap/extension-superscript';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
-import { TableKit } from '@tiptap/extension-table';
-import { CharacterCount } from '@tiptap/extensions';
+import { TableKit } from '@tiptap/extension-table'
+import TableRow from '@tiptap/extension-table-row';
+import TableHeader from '@tiptap/extension-table-header';
+import TableCell from '@tiptap/extension-table-cell';
+import CharacterCount from '@tiptap/extension-character-count';
 import { apiUploadFile } from '../api/client';
 
 type Props = {
@@ -30,7 +38,7 @@ const ToolbarButton: React.FC<
 > = ({ active, className, ...rest }) => (
   <button
     type="button"
-    className={`px-2 py-1 rounded text-sm ${
+    className={`px-2 py-1 rounded text-sm transition ${
       active ? 'bg-slate-700 text-white' : 'text-slate-200 hover:bg-slate-700/60'
     } ${className ?? ''}`}
     {...rest}
@@ -89,10 +97,14 @@ const RichTextEditor: React.FC<Props> = ({
       Link.configure({
         openOnClick: true,
         autolink: true,
-        HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank', class: 'underline' },
+        HTMLAttributes: {
+          rel: 'noopener noreferrer',
+          target: '_blank',
+          class: 'underline underline-offset-2 decoration-cyan-400',
+        },
       }),
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
-      Placeholder.configure({ placeholder: placeholder || 'Start writing...' }),
+      Placeholder.configure({ placeholder: placeholder || 'Start writing…' }),
       TextStyleKit,
       Color,
       Highlight.configure({ multicolor: true }),
@@ -100,7 +112,14 @@ const RichTextEditor: React.FC<Props> = ({
       Superscript,
       TaskList,
       TaskItem.configure({ nested: true }),
-      TableKit.configure({ table: { resizable: true }, tableCell: { HTMLAttributes: { class: 'align-top' } } }),
+      TableKit.configure({
+        table: { resizable: true },
+      }),
+      TableRow,
+      TableHeader,
+      TableCell.configure({
+        HTMLAttributes: { class: 'align-top' },
+      }),
       CharacterCount.configure({ limit: maxChars > 0 ? maxChars : undefined }),
     ],
     editorProps: {
@@ -120,7 +139,7 @@ const RichTextEditor: React.FC<Props> = ({
       handlePaste: (_view, event) => {
         const items = event.clipboardData?.items;
         if (!items) return false;
-        for (const it of items) {
+        for (const it of Array.from(items)) {
           if (it.kind === 'file') {
             const f = it.getAsFile();
             if (f && f.type.startsWith('image/')) {
@@ -145,6 +164,7 @@ const RichTextEditor: React.FC<Props> = ({
     },
   });
 
+  // синхронизация внешнего value → редактор
   useEffect(() => {
     if (!editor) return;
     const normalized = value && value.trim() !== '' ? value : '<p></p>';
@@ -155,6 +175,7 @@ const RichTextEditor: React.FC<Props> = ({
     }
   }, [value, editor, htmlMode]);
 
+  // -------- actions ----------
   const addLink = () => {
     if (!editor) return;
     const prev = editor.getAttributes('link')?.href || '';
@@ -200,10 +221,11 @@ const RichTextEditor: React.FC<Props> = ({
     editor.chain().focus().insertContent(html).run();
   };
 
+  // quick state
   const [textColor, setTextColor] = useState('#ffffff');
   const [hlColor, setHlColor] = useState('#fde68a');
 
-  // === Font size control ===
+  // font size via TextStyleKit
   const [fontPx, setFontPx] = useState<number>(18);
   const applyFontPx = (px: number) => {
     if (!editor) return;
@@ -242,6 +264,8 @@ const RichTextEditor: React.FC<Props> = ({
     onChange(rawHtml);
   };
 
+  // stats
+  // CharacterCount API может отличаться в разных версиях — оставляем защитные проверки:
   const words =
     (editor?.storage?.characterCount && (editor.storage as any).characterCount.words?.()) ?? 0;
   const chars =
@@ -251,24 +275,37 @@ const RichTextEditor: React.FC<Props> = ({
 
   return (
     <div className="space-y-2">
-      {/* Панель инструментов */}
+      {/* --- Top toolbar --- */}
       <div className="flex flex-wrap items-center gap-1 bg-slate-800/60 rounded-lg p-2">
         <ToolbarButton onClick={() => editor?.chain().focus().undo().run()} disabled={!can.undo}>↶ Undo</ToolbarButton>
         <ToolbarButton onClick={() => editor?.chain().focus().redo().run()} disabled={!can.redo}>↷ Redo</ToolbarButton>
         <Divider />
 
-        <ToolbarButton active={editor?.isActive('paragraph')} onClick={() => editor?.chain().focus().setParagraph().run()}>P</ToolbarButton>
-        <ToolbarButton active={editor?.isActive('heading', { level: 1 })} onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()}>H1</ToolbarButton>
-        <ToolbarButton active={editor?.isActive('heading', { level: 2 })} onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}>H2</ToolbarButton>
-        <ToolbarButton active={editor?.isActive('heading', { level: 3 })} onClick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()}>H3</ToolbarButton>
-        <Divider />
+        {/* Headings dropdown */}
+        <details className="group relative">
+          <summary className="list-none px-2 py-1 rounded text-sm text-slate-200 hover:bg-slate-700/60 cursor-pointer">
+            {editor?.isActive('heading', { level: 1 })
+              ? 'H1'
+              : editor?.isActive('heading', { level: 2 })
+              ? 'H2'
+              : editor?.isActive('heading', { level: 3 })
+              ? 'H3'
+              : 'Text'}
+          </summary>
+          <div className="absolute z-10 mt-1 w-36 bg-slate-800 border border-slate-700 rounded-lg p-1">
+            <button className="w-full text-left px-3 py-2 rounded hover:bg-slate-700/60" onClick={() => editor?.chain().focus().setParagraph().run()}>Paragraph</button>
+            <button className="w-full text-left px-3 py-2 rounded hover:bg-slate-700/60" onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()}>Heading 1</button>
+            <button className="w-full text-left px-3 py-2 rounded hover:bg-slate-700/60" onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}>Heading 2</button>
+            <button className="w-full text-left px-3 py-2 rounded hover:bg-slate-700/60" onClick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()}>Heading 3</button>
+          </div>
+        </details>
 
+        <Divider />
         <ToolbarButton active={editor?.isActive('bold')} onClick={() => editor?.chain().focus().toggleBold().run()} disabled={!can.b}><span className="font-bold">B</span></ToolbarButton>
         <ToolbarButton active={editor?.isActive('italic')} onClick={() => editor?.chain().focus().toggleItalic().run()} disabled={!can.i}><span className="italic">I</span></ToolbarButton>
         <ToolbarButton active={editor?.isActive('underline')} onClick={() => editor?.chain().focus().toggleUnderline().run()} disabled={!can.u}><span className="underline">U</span></ToolbarButton>
         <ToolbarButton active={editor?.isActive('strike')} onClick={() => editor?.chain().focus().toggleStrike().run()} disabled={!can.s}><span className="line-through">S</span></ToolbarButton>
         <ToolbarButton active={editor?.isActive('code')} onClick={() => editor?.chain().focus().toggleCode().run()}>Code</ToolbarButton>
-        <ToolbarButton active={editor?.isActive('codeBlock')} onClick={() => editor?.chain().focus().toggleCodeBlock().run()}>CodeBlock</ToolbarButton>
         <Divider />
 
         <ToolbarButton active={editor?.isActive('bulletList')} onClick={() => editor?.chain().focus().toggleBulletList().run()}>• List</ToolbarButton>
@@ -277,9 +314,9 @@ const RichTextEditor: React.FC<Props> = ({
         <Divider />
 
         <ToolbarButton active={editor?.isActive({ textAlign: 'left' })} onClick={() => editor?.chain().focus().setTextAlign('left').run()}>⬅</ToolbarButton>
-        <ToolbarButton active={editor?.isActive({ textAlign: 'center' })} onClick={() => editor?.chain().focus().setTextAlign('center').run()}>⬍</ToolbarButton>
+        <ToolbarButton active={editor?.isActive({ textAlign: 'center' })} onClick={() => editor?.chain().focus().setTextAlign('center').run()}>⟷</ToolbarButton>
         <ToolbarButton active={editor?.isActive({ textAlign: 'right' })} onClick={() => editor?.chain().focus().setTextAlign('right').run()}>➡</ToolbarButton>
-        <ToolbarButton active={editor?.isActive({ textAlign: 'justify' })} onClick={() => editor?.chain().focus().setTextAlign('justify').run()}>⟷</ToolbarButton>
+        <ToolbarButton active={editor?.isActive({ textAlign: 'justify' })} onClick={() => editor?.chain().focus().setTextAlign('justify').run()}>≋</ToolbarButton>
         <Divider />
 
         <ToolbarButton onClick={addLink} active={!!editor?.isActive('link')}>Link</ToolbarButton>
@@ -318,8 +355,8 @@ const RichTextEditor: React.FC<Props> = ({
             title="Highlight color"
           />
         </label>
-        <Divider />
 
+        <Divider />
         {/* Размер шрифта */}
         <div className="flex items-center gap-1 px-2 py-1 rounded text-sm bg-slate-800/40 border border-slate-700">
           <span className="text-slate-300 mr-1">Font</span>
@@ -343,35 +380,28 @@ const RichTextEditor: React.FC<Props> = ({
         </div>
 
         <Divider />
-
         <ToolbarButton onClick={() => editor?.chain().focus().toggleBlockquote().run()} active={editor?.isActive('blockquote')}>❝ Quote</ToolbarButton>
         <ToolbarButton onClick={() => editor?.chain().focus().setHorizontalRule().run()}>─ HR</ToolbarButton>
         <Divider />
 
-        {/* Таблицы */}
-        <div className="relative">
-          <details className="group inline-block">
-            <summary className="list-none inline-block px-2 py-1 rounded text-sm text-slate-200 hover:bg-slate-700/60 cursor-pointer">
-              Table ▾
-            </summary>
-            <div className="absolute z-10 mt-1 bg-slate-800 border border-slate-700 rounded-lg p-2 w-56">
-              <div className="grid grid-cols-1 gap-1">
-                <ToolbarButton onClick={() => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>Insert 3×3</ToolbarButton>
-                <ToolbarButton onClick={() => editor?.chain().focus().addColumnBefore().run()}>Add column before</ToolbarButton>
-                <ToolbarButton onClick={() => editor?.chain().focus().addColumnAfter().run()}>Add column after</ToolbarButton>
-                <ToolbarButton onClick={() => editor?.chain().focus().deleteColumn().run()}>Delete column</ToolbarButton>
-                <ToolbarButton onClick={() => editor?.chain().focus().addRowBefore().run()}>Add row before</ToolbarButton>
-                <ToolbarButton onClick={() => editor?.chain().focus().addRowAfter().run()}>Add row after</ToolbarButton>
-                <ToolbarButton onClick={() => editor?.chain().focus().deleteRow().run()}>Delete row</ToolbarButton>
-                <ToolbarButton onClick={() => editor?.chain().focus().mergeCells().run()}>Merge cells</ToolbarButton>
-                <ToolbarButton onClick={() => editor?.chain().focus().splitCell().run()}>Split cell</ToolbarButton>
-                <ToolbarButton onClick={() => editor?.chain().focus().deleteTable().run()}>Delete table</ToolbarButton>
-              </div>
+        {/* Таблица (минимальный набор) */}
+        <details className="group relative">
+          <summary className="list-none px-2 py-1 rounded text-sm text-slate-200 hover:bg-slate-700/60 cursor-pointer">
+            Table ▾
+          </summary>
+          <div className="absolute z-10 mt-1 bg-slate-800 border border-slate-700 rounded-lg p-2 w-56">
+            <div className="grid grid-cols-1 gap-1">
+              <ToolbarButton onClick={() => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>Insert 3×3</ToolbarButton>
+              <ToolbarButton onClick={() => editor?.chain().focus().addColumnAfter().run()}>Add column</ToolbarButton>
+              <ToolbarButton onClick={() => editor?.chain().focus().addRowAfter().run()}>Add row</ToolbarButton>
+              <ToolbarButton onClick={() => editor?.chain().focus().deleteColumn().run()}>Delete column</ToolbarButton>
+              <ToolbarButton onClick={() => editor?.chain().focus().deleteRow().run()}>Delete row</ToolbarButton>
+              <ToolbarButton onClick={() => editor?.chain().focus().deleteTable().run()}>Delete table</ToolbarButton>
             </div>
-          </details>
-        </div>
-        <Divider />
+          </div>
+        </details>
 
+        <Divider />
         <ToolbarButton onClick={insertYoutube}>YouTube</ToolbarButton>
         <Divider />
 
@@ -379,7 +409,38 @@ const RichTextEditor: React.FC<Props> = ({
         <ToolbarButton onClick={toggleHtmlMode} className={htmlMode ? 'bg-yellow-600 text-white' : ''}>HTML</ToolbarButton>
       </div>
 
-      {/* Редактор / исходный HTML */}
+      {/* --- Bubble menu: быстрое форматирование выделенного текста --- */}
+      {editor && (
+        <BubbleMenu
+          editor={editor}
+          tippyOptions={{ duration: 150 }}
+          className="flex items-center gap-1 bg-slate-800 border border-slate-700 rounded-md p-1"
+        >
+          <ToolbarButton active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}><span className="font-bold">B</span></ToolbarButton>
+          <ToolbarButton active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()}><span className="italic">I</span></ToolbarButton>
+          <ToolbarButton active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()}><span className="underline">U</span></ToolbarButton>
+          <Divider />
+          <ToolbarButton onClick={addLink} active={!!editor.isActive('link')}>Link</ToolbarButton>
+          <ToolbarButton onClick={() => editor.chain().focus().unsetLink().run()}>Unlink</ToolbarButton>
+        </BubbleMenu>
+      )}
+
+      {/* --- Floating menu: контекстное вставление блоков в начале строки --- */}
+      {editor && (
+        <FloatingMenu
+          editor={editor}
+          tippyOptions={{ duration: 150, placement: 'right' }}
+          className="flex items-center gap-1 bg-slate-800 border border-slate-700 rounded-md p-1"
+        >
+          <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>H2</ToolbarButton>
+          <ToolbarButton onClick={() => editor.chain().focus().toggleBulletList().run()}>• List</ToolbarButton>
+          <ToolbarButton onClick={() => editor.chain().focus().toggleBlockquote().run()}>❝ Quote</ToolbarButton>
+          <ToolbarButton onClick={() => editor.chain().focus().setHorizontalRule().run()}>─ HR</ToolbarButton>
+          <ToolbarButton onClick={pickImage}>Image</ToolbarButton>
+        </FloatingMenu>
+      )}
+
+      {/* --- Editor or raw HTML --- */}
       {!htmlMode ? (
         <EditorContent editor={editor} />
       ) : (
@@ -411,7 +472,7 @@ const RichTextEditor: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Status bar */}
+      {/* --- Status bar --- */}
       <div className="flex flex-wrap items-center justify-between text-xs text-slate-500">
         <div>
           {maxChars ? (
