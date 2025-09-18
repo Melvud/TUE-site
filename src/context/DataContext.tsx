@@ -43,7 +43,7 @@ function usePersistedToken() {
   return { token, setToken } as const;
 }
 
-// helpers to normalize file URLs coming from API/DB
+// Нормализация путей картинок и контента под /uploads/
 function normalizeEvent(e: Event): Event {
   return {
     ...e,
@@ -68,11 +68,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isAuthenticated = Boolean(token);
 
+  // Админский GET с фолбэком на публичный, если /admin недоступен (404)
   const getWithFallback = async <T,>(adminPath: string, publicPath: string): Promise<T> => {
     if (isAuthenticated && token) {
       try {
         return await apiGet<T>(adminPath, token);
-      } catch { /* fallback below */ }
+      } catch { /* fallback ниже */ }
     }
     return await apiGet<T>(publicPath);
   };
