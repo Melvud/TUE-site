@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: tue-site-backend
+    env: node
+    plan: free
+    buildCommand: "npm install"
+    startCommand: "node server/index.js"
+    envVars:
+      - key: ADMIN_TOKEN
+        value: admin-secret
+      - key: ADMIN_EMAIL
+        value: admin@tue.local
+      - key: ADMIN_PASSWORD
+        value: admin123
+      - key: ADMIN_NAME
+        value: "Site Admin"
+
+  - type: web
+    name: tue-site-frontend
+    env: static
+    plan: free
+    buildCommand: "npm install && npm run build"
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        value: "https://tue-site-backend.onrender.com/api"

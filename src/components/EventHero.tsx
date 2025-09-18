@@ -16,9 +16,11 @@ type EventType = {
 type Props = {
   event: EventType | null | undefined;
   className?: string;
+  /** Показывать вторую (нижнюю) кнопку "Register for event" под картинкой */
+  showBottomRegister?: boolean;
 };
 
-const EventHero: React.FC<Props> = ({ event, className }) => {
+const EventHero: React.FC<Props> = ({ event, className, showBottomRegister = true }) => {
   if (!event) return null;
 
   const dateStr = (() => {
@@ -111,7 +113,8 @@ const EventHero: React.FC<Props> = ({ event, className }) => {
         )}
       </div>
 
-      {event.googleFormUrl && (
+      {/* Нижняя кнопка регистрации — управляется пропом */}
+      {showBottomRegister && event.googleFormUrl && (
         <div className="max-w-5xl mx-auto px-4 sm:px-6 mt-8 text-center">
           <a
             href={event.googleFormUrl}

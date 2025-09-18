@@ -24,6 +24,37 @@ const API_ORIGIN = (() => {
 const isBrowser =
   typeof window !== 'undefined' && typeof window.location !== 'undefined';
 
+// -------- Files / Upload URLs helpers --------
+/** Build absolute file URL pointing to the API origin (server), not the app origin. */
+export function toFileUrl(u?: string): string | undefined {
+  if (!u) return u;
+  try {
+    if (/^https?:\/\//i.test(u)) {
+      const url = new URL(u);
+      if (url.pathname.startsWith('/server/uploads/')) {
+        return `${API_ORIGIN}${url.pathname}`;
+      }
+      return u;
+    }
+    const path = u.startsWith('/') ? u : `/${u}`;
+    return `${API_ORIGIN}${path}`;
+  } catch {
+    return u;
+  }
+}
+
+/** Replace any /uploads references inside HTML to point to API origin. */
+export function fixUploadsInHtml(html?: string): string | undefined {
+  if (!html) return html;
+  try {
+    return html
+      .replace(/src="\/uploads\//g, `src="${API_ORIGIN}/server/uploads/`)
+      .replace(/src="https?:\/\/[^"]+\/uploads\//g, `src="${API_ORIGIN}/server/uploads/`);
+  } catch {
+    return html;
+  }
+}
+
 // ======================= Вспомогалки ========================
 function withAuth(headers: HeadersInit = {}, token?: string) {
   const h = new Headers(headers);
@@ -35,13 +66,15 @@ async function fetchJSON<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
   const res = await fetch(input, init);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
+    try {
+      const json = JSON.parse(text);
+      throw new Error(json?.error || json?.message || `HTTP ${res.status}: ${res.statusText}`);
+    } catch {
+      throw new Error(text || `HTTP ${res.status}: ${res.statusText}`);
+    }
   }
   const ct = res.headers.get('content-type') || '';
-  if (ct.includes('application/json')) {
-    return (await res.json()) as T;
-  }
-  // Пустой ответ
+  if (ct.includes('application/json')) return (await res.json()) as T;
   return undefined as unknown as T;
 }
 
@@ -78,28 +111,20 @@ export async function apiGet<T>(path: string, token?: string): Promise<T> {
   });
 }
 
-export async function apiPost<T>(
-  path: string,
-  body?: unknown,
-  token?: string
-): Promise<T> {
+export async function apiPost<T>(path: string, body?: any, token?: string): Promise<T> {
   return fetchJSON<T>(toUrl(path), {
     method: 'POST',
     headers: withAuth({ 'Content-Type': 'application/json' }, token),
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: JSON.stringify(clean(body ?? {})),
     credentials: 'include',
   });
 }
 
-export async function apiPut<T>(
-  path: string,
-  body?: unknown,
-  token?: string
-): Promise<T> {
+export async function apiPut<T>(path: string, body?: any, token?: string): Promise<T> {
   return fetchJSON<T>(toUrl(path), {
     method: 'PUT',
     headers: withAuth({ 'Content-Type': 'application/json' }, token),
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: JSON.stringify(clean(body ?? {})),
     credentials: 'include',
   });
 }
@@ -112,7 +137,7 @@ export async function apiDelete(path: string, token?: string): Promise<void> {
   });
 }
 
-// ======================= Типы =======================
+// ======================= Типы payload-ов (могут отличаться от UI-типов) =======================
 export type EventPayload = {
   id?: string | number;
   title: string;
@@ -133,7 +158,7 @@ export type NewsPayload = {
   summary?: string;
   content?: string;
   published?: boolean;
-  publishAt?: string; // ISO datetime (optional)
+  publishAt?: string; // ISO
 };
 
 // ======================= Upload =======================
@@ -154,8 +179,7 @@ export async function apiUploadFile(file: File, token?: string): Promise<string>
   if (!fileUrl) throw new Error('Upload response has no "url"');
 
   if (/^https?:\/\//i.test(fileUrl)) return fileUrl;
-  const origin = isBrowser ? window.location.origin : API_ORIGIN;
-  return `${origin}${fileUrl.startsWith('/') ? '' : '/'}${fileUrl}`;
+  return toFileUrl(fileUrl)!;
 }
 
 // ======================= Events (врапперы) =======================

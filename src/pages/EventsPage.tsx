@@ -20,7 +20,7 @@ const EventsPage: React.FC = () => {
       </div>
 
       <Section>
-        <EventHero event={latestEvent} />
+        <EventHero event={latestEvent} showBottomRegister={false} />
       </Section>
     </div>
   );

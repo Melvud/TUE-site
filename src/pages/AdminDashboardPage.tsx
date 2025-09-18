@@ -1,5 +1,7 @@
+// src/pages/AdminDashboardPage.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import RichTextEditor from '../components/RichTextEditor';
+import ImageUploader from '../components/ImageUploader';
 import {
   apiGetEvents,
   apiCreateEvent,
@@ -14,7 +16,7 @@ type EventForm = {
   id?: string | number;
   title: string;
   date?: string;
-  coverUrl?: string;
+  coverUrl?: string | null;
   googleFormUrl?: string;
   summary?: string;
   content: string;
@@ -25,7 +27,7 @@ type EventForm = {
 type NewsForm = {
   id?: string | number;
   title: string;
-  coverUrl?: string;
+  coverUrl?: string | null;
   summary?: string;
   content: string;
   published: boolean;
@@ -109,7 +111,6 @@ const AdminDashboardPage: React.FC = () => {
     try {
       if (payload.id != null) {
         const server = await apiUpdateEvent(payload.id, payload, token || undefined);
-        // если сервер вернул объект — берем его, иначе локально мержим
         setEvents((list) =>
           list.map((it) => (sameId(it, payload) ? (server || { ...it, ...payload }) : it))
         );
@@ -118,7 +119,6 @@ const AdminDashboardPage: React.FC = () => {
         setEvents((list) => (created ? [created, ...list] : [payload, ...list]));
       }
       resetEvent();
-      // контрольный рефетч: гарантированно синхронизируемся с реальным db.json
       await loadAll();
     } catch (e: any) {
       console.error(e);
@@ -175,9 +175,9 @@ const AdminDashboardPage: React.FC = () => {
     if (!d) return '';
     const dd = new Date(d);
     return isNaN(+dd) ? String(d) : dd.toISOString().slice(0, 10);
-  };
+    };
 
-  // ======= Фильтры/поиск (вдруг захочешь расширить) =======
+  // ======= Фильтры/поиск =======
   const [searchEv, setSearchEv] = useState('');
   const [searchNews, setSearchNews] = useState('');
   const filteredEvents = useMemo(() => {
@@ -244,12 +244,16 @@ const AdminDashboardPage: React.FC = () => {
                 value={ev.date || ''}
                 onChange={(e) => setEvField('date', e.target.value)}
               />
-              <input
-                className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2"
-                placeholder="Cover image URL"
-                value={ev.coverUrl || ''}
-                onChange={(e) => setEvField('coverUrl', e.target.value)}
-              />
+
+              {/* ☑️ Загрузка обложки (выбор файла или перетаскивание) */}
+              <div className="w-full">
+                <ImageUploader
+                  value={ev.coverUrl || ''}
+                  onChange={(url) => setEvField('coverUrl', url || '')}
+                  token={token}
+                  label="Cover image"
+                />
+              </div>
             </div>
 
             <input
@@ -368,21 +372,26 @@ const AdminDashboardPage: React.FC = () => {
               value={nw.title}
               onChange={(e) => setNwField('title', e.target.value)}
             />
+
+            {/* Картинка + краткое описание в 2 колонки */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <input
-                className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2"
-                placeholder="Cover image URL"
-                value={nw.coverUrl || ''}
-                onChange={(e) => setNwField('coverUrl', e.target.value)}
-              />
+              <div className="w-full">
+                <ImageUploader
+                  value={nw.coverUrl || ''}
+                  onChange={(url) => setNwField('coverUrl', url || '')}
+                  token={token}
+                  label="Cover image"
+                />
+              </div>
               <textarea
-                className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 sm:col-span-2"
+                className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2"
                 placeholder="Short description"
-                rows={3}
+                rows={6}
                 value={nw.summary || ''}
                 onChange={(e) => setNwField('summary', e.target.value)}
               />
             </div>
+
             <div>
               <label className="block text-sm mb-2">Content</label>
               <RichTextEditor
@@ -392,6 +401,7 @@ const AdminDashboardPage: React.FC = () => {
                 placeholder="Full news content…"
               />
             </div>
+
             <div className="flex items-center gap-4 pt-2">
               <label className="inline-flex items-center gap-2">
                 <input
@@ -403,6 +413,7 @@ const AdminDashboardPage: React.FC = () => {
                 <span>Published</span>
               </label>
             </div>
+
             <div className="flex flex-wrap gap-3">
               <button
                 type="button"

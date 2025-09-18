@@ -22,7 +22,6 @@ const HomePage: React.FC = () => {
 
   return (
     <div className="bg-slate-900">
-      {/* Центрированный hero с печатанием и скроллом к #upcoming */}
       <Hero
         bgUrl="/hero.jpg"
         titleLine1="Photonics Society"
@@ -35,17 +34,14 @@ const HomePage: React.FC = () => {
         scrollTargetId="upcoming"
       />
 
-      {/* Якорь: сюда прокручивает стрелка */}
       <div id="upcoming" className="scroll-mt-24" />
 
-      {/* Один большой ивент */}
       {latestEvent && (
         <Section title="Upcoming Events">
-          <EventHero event={latestEvent} />
+          <EventHero event={latestEvent} showBottomRegister={false} />
         </Section>
       )}
 
-      {/* Новости */}
       {recentNews?.length > 0 && (
         <Section title="Latest News">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
