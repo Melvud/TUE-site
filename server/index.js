@@ -459,6 +459,20 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
 
+// ────────────── CLIENT (STATIC) ──────────────
+// ВАЖНО: это единственные добавления для миграции
+// Раздаём собранный фронт из ../dist и включаем SPA-fallback.
+const CLIENT_DIST = path.join(__dirname, '..', 'dist');
+app.use(express.static(CLIENT_DIST));
+
+app.get('*', (req, res) => {
+  // Не перехватываем API и явные файлы из /uploads
+  if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  res.sendFile(path.join(CLIENT_DIST, 'index.html'));
+});
+
 // ────────────── BOOT ──────────────
 await initDB();
 await ensureDir(UPLOADS_DIR);
