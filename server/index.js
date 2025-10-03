@@ -36,9 +36,9 @@ app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d', immutable: true
 // Health check
 app.get('/health', (_req, res) => res.status(200).send('ok'));
 
-// 🔍 Проверка БД перед инициализацией Payload
+// 🔍 Проверка БД
 async function checkDatabase() {
-  console.log('\n🔍 Checking database connection and tables...\n');
+  console.log('\n🔍 Checking database...\n');
   
   const client = new Client({
     connectionString: process.env.DATABASE_URL,
@@ -47,40 +47,24 @@ async function checkDatabase() {
 
   try {
     await client.connect();
-    console.log('✅ Database connection successful');
-
-    // Проверяем список таблиц
     const result = await client.query(`
-      SELECT tablename 
-      FROM pg_tables 
-      WHERE schemaname = 'public' 
-      ORDER BY tablename
+      SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
     `);
 
-    console.log(`\n📊 Found ${result.rows.length} tables:`);
-    result.rows.forEach((row) => console.log(`  - ${row.tablename}`));
+    console.log(`✅ Database OK (${result.rows.length} tables)`);
 
-    // Критичные таблицы для Payload
-    const requiredTables = ['users', 'media', 'events', 'news', 'members', 'payload_migrations'];
+    const requiredTables = ['users', 'events', 'news', 'members', 'media'];
     const existingTables = result.rows.map(r => r.tablename);
-    const missingTables = requiredTables.filter(t => !existingTables.includes(t));
+    const missing = requiredTables.filter(t => !existingTables.includes(t));
 
-    if (missingTables.length > 0) {
-      console.error('\n❌ CRITICAL: Missing required tables:');
-      missingTables.forEach(t => console.error(`  - ${t}`));
-      console.error('\n💡 Please run the SQL schema creation script in Neon Console!');
-      console.error('   See: https://console.neon.tech → SQL Editor\n');
-      throw new Error('Database schema not initialized');
+    if (missing.length > 0) {
+      console.error('❌ Missing tables:', missing.join(', '));
+      throw new Error('Database schema incomplete');
     }
 
-    console.log('\n✅ All required tables exist\n');
-
-    // Проверяем есть ли админ
-    const adminCheck = await client.query('SELECT COUNT(*) as count FROM users');
-    console.log(`👤 Users in database: ${adminCheck.rows[0].count}\n`);
-
+    console.log('✅ All required tables exist\n');
   } catch (err) {
-    console.error('\n❌ Database check failed:', err.message);
+    console.error('❌ Database check failed:', err.message);
     throw err;
   } finally {
     await client.end();
@@ -90,13 +74,11 @@ async function checkDatabase() {
 // Инициализация Payload
 (async () => {
   try {
-    // 🔥 СНАЧАЛА проверяем БД
     await checkDatabase();
 
     const mjsPath = path.resolve(__dirname, 'payload.config.mjs');
     const jsPath  = path.resolve(__dirname, 'payload.config.js');
     const configPath = fs.existsSync(mjsPath) ? mjsPath : jsPath;
-    if (!configPath) throw new Error('No Payload config found in /server');
 
     console.log('➡️  Loading Payload config from:', configPath);
 
@@ -108,10 +90,11 @@ async function checkDatabase() {
 
     console.log('🔧 Initializing Payload CMS...');
     
-    await payload.init({
+    // 🔥 НОВЫЙ ПОДХОД: НЕ передаём express app
+    const payloadInstance = await payload.init({
       secret: process.env.PAYLOAD_SECRET || 'dev-secret',
-      express: app,
       config: payloadConfig,
+      // express: app, ← НЕ ПЕРЕДАЁМ!
       onInit: async (instance) => {
         console.log('✅ Payload CMS initialized');
 
@@ -142,33 +125,25 @@ async function checkDatabase() {
       },
     });
 
-    console.log('✅ Payload routes mounted');
-
-    // 🔍 Проверяем зарегистрированные роуты
-    console.log('\n📍 Checking registered routes...');
-    let adminFound = false;
-    let apiFound = false;
-
-    app._router.stack.forEach((middleware) => {
-      if (middleware.route) {
-        if (middleware.route.path.includes('admin')) adminFound = true;
-        if (middleware.route.path.includes('api')) apiFound = true;
-      } else if (middleware.name === 'router' && middleware.regexp) {
-        const path = middleware.regexp.source;
-        if (path.includes('admin')) {
-          adminFound = true;
-          console.log('  ✅ Found /admin routes');
-        }
-        if (path.includes('api')) {
-          apiFound = true;
-          console.log('  ✅ Found /api routes');
-        }
-      }
-    });
-
-    if (!adminFound) console.warn('  ⚠️  /admin routes NOT found!');
-    if (!apiFound) console.warn('  ⚠️  /api routes NOT found!');
-    console.log('');
+    // 🔥 ВРУЧНУЮ монтируем Payload middleware
+    console.log('🔧 Mounting Payload routes manually...');
+    
+    // Payload создаёт собственный Express app внутри
+    if (payloadInstance.express) {
+      app.use(payloadInstance.express);
+      console.log('✅ Payload routes mounted via instance.express');
+    } else {
+      console.error('❌ payloadInstance.express is undefined!');
+      console.error('   Payload version might be incompatible');
+      console.error('   Trying alternative approach...');
+      
+      // Альтернатива: используем getAdminURL и getAPIURL
+      const adminURL = payloadInstance.getAdminURL ? payloadInstance.getAdminURL() : '/admin';
+      const apiURL = payloadInstance.getAPIURL ? payloadInstance.getAPIURL() : '/api';
+      
+      console.log(`   Admin URL: ${adminURL}`);
+      console.log(`   API URL: ${apiURL}`);
+    }
 
     // Upload endpoint
     app.post('/api/upload-local', upload.single('file'), (req, res) => {
@@ -179,7 +154,7 @@ async function checkDatabase() {
     // Фронтенд (SPA)
     const distPath = path.resolve(projectRoot, 'dist');
 
-    // Статика
+    // Статика (только НЕ для /api и /admin)
     app.use((req, res, next) => {
       if (req.path.startsWith('/api') || req.path.startsWith('/admin')) {
         return next();
@@ -201,6 +176,37 @@ async function checkDatabase() {
       }
     });
 
+    // 🔍 Проверяем зарегистрированные роуты
+    console.log('\n📍 Registered routes:');
+    let routeCount = 0;
+    let adminFound = false;
+    let apiFound = false;
+
+    app._router.stack.forEach((layer) => {
+      if (layer.route) {
+        routeCount++;
+        const path = layer.route.path;
+        console.log(`  ${Object.keys(layer.route.methods).join(',').toUpperCase()} ${path}`);
+        if (path.includes('admin')) adminFound = true;
+        if (path.includes('api')) apiFound = true;
+      } else if (layer.name === 'router') {
+        layer.handle.stack.forEach((r) => {
+          if (r.route) {
+            routeCount++;
+            const path = r.route.path;
+            console.log(`  ${Object.keys(r.route.methods).join(',').toUpperCase()} ${path}`);
+            if (path.includes('admin')) adminFound = true;
+            if (path.includes('api')) apiFound = true;
+          }
+        });
+      }
+    });
+
+    console.log(`\n  Total routes: ${routeCount}`);
+    console.log(`  Admin routes: ${adminFound ? '✅' : '❌'}`);
+    console.log(`  API routes: ${apiFound ? '✅' : '❌'}`);
+    console.log('');
+
     // Запуск сервера
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, '0.0.0.0', () => {
@@ -212,9 +218,9 @@ async function checkDatabase() {
       console.log('📍 API: /api');
       console.log('📍 Health: /health');
       console.log('');
-      console.log('🔐 Login credentials:');
+      console.log('🔐 Login:');
       console.log(`   ${process.env.PAYLOAD_SEED_ADMIN_EMAIL || 'admin@tue.nl'}`);
-      console.log(`   ${process.env.PAYLOAD_SEED_ADMIN_PASSWORD || '[see env]'}`);
+      console.log(`   ${process.env.PAYLOAD_SEED_ADMIN_PASSWORD || '[password]'}`);
       console.log('');
     });
 
