@@ -7,9 +7,12 @@ import { buildConfig } from 'payload';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const ROLES = ['viewer', 'editor', 'admin'] as const;
-const isAdmin = ({ req }: any) => req.user?.role === 'admin';
-const isEditorOrAdmin = ({ req }: any) => ['editor', 'admin'].includes(req.user?.role);
+// ✅ Убираем 'as const' - это проблема
+const ROLES = ['viewer', 'editor', 'admin'];
+
+// ✅ Добавляем явную типизацию для функций
+const isAdmin = ({ req }: { req: any }) => req.user?.role === 'admin';
+const isEditorOrAdmin = ({ req }: { req: any }) => ['editor', 'admin'].includes(req.user?.role);
 
 export default buildConfig({
   secret: process.env.PAYLOAD_SECRET || 'dev-secret',
@@ -208,7 +211,7 @@ export default buildConfig({
       ],
       hooks: {
         afterChange: [
-          async ({ doc, operation }: any) => {
+          async ({ doc, operation }: { doc: any; operation: string }) => {
             if (operation !== 'create') return;
             
             try {
