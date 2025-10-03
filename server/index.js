@@ -77,36 +77,61 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
       throw new Error('Invalid payload.config.mjs export');
     }
 
+    console.log('🔧 Initializing Payload CMS...');
+
     // ⚠️ КРИТИЧЕСКИ ВАЖНО: передаём { express: app }
     // Payload v3 автоматически монтирует /admin и /api на этот app
     await payload.init({
       secret: process.env.PAYLOAD_SECRET || 'dev-secret',
       express: app,
       config: payloadConfig,
-      onInit: async () => {
+      onInit: async (payloadInstance) => {
         console.log('✅ Payload CMS initialized');
         console.log('📍 Admin panel: /admin');
         console.log('📍 API: /api');
 
-        // Разовый сид админа
+        // ===== АВТО-МИГРАЦИЯ БД =====
+        try {
+          console.log('🔄 Running database migrations...');
+          
+          // Для Payload v3 используем метод migrate
+          if (payloadInstance.db && typeof payloadInstance.db.migrate === 'function') {
+            await payloadInstance.db.migrate();
+            console.log('✅ Database migrations completed');
+          } else {
+            console.log('⚠️  No migrations needed or db.migrate not available');
+          }
+        } catch (migErr) {
+          console.error('❌ Migration failed:', migErr.message);
+          // Не останавливаем сервер - попробуем продолжить
+        }
+
+        // Разовый сид админа (ПОСЛЕ миграций)
         const email = process.env.PAYLOAD_SEED_ADMIN_EMAIL;
         const pass = process.env.PAYLOAD_SEED_ADMIN_PASSWORD;
         if (email && pass) {
           try {
-            const { docs } = await payload.find({
+            const { docs } = await payloadInstance.find({
               collection: 'users',
               where: { email: { equals: email } },
               limit: 1,
             });
             if (!docs?.length) {
-              await payload.create({
+              await payloadInstance.create({
                 collection: 'users',
-                data: { email, password: pass, name: 'Admin', role: 'admin' },
+                data: { 
+                  email, 
+                  password: pass, 
+                  name: 'Admin', 
+                  role: 'admin' 
+                },
               });
               console.log(`👤 Seed admin created: ${email}`);
+            } else {
+              console.log(`👤 Admin user already exists: ${email}`);
             }
           } catch (e) {
-            console.warn('⚠️  Seed admin check failed:', e.message);
+            console.error('❌ Seed admin failed:', e.message);
           }
         }
       },
@@ -115,37 +140,31 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
     console.log('✅ Payload routes mounted');
 
     // ===== ВАЖНО: Статику монтируем ПОСЛЕ Payload =====
-    // Используем условный middleware, чтобы НЕ перехватывать Payload маршруты
     const distPath = path.resolve(projectRoot, 'dist');
     
-    // Проверяем существование dist
     if (!fs.existsSync(distPath)) {
-      console.warn('⚠️  dist folder not found. Run `npm run build` first.');
+      console.warn('⚠️  dist folder not found. Frontend will not be served.');
     }
 
     // Статика только для не-API и не-admin запросов
     app.use((req, res, next) => {
-      // Пропускаем Payload маршруты
       if (req.path.startsWith('/api') || req.path.startsWith('/admin')) {
         return next();
       }
-      // Раздаём статику
       express.static(distPath, { 
-        index: false, // не автоматически index.html
+        index: false,
         maxAge: '1d',
         etag: true,
         lastModified: true
       })(req, res, next);
     });
 
-    // SPA fallback — только для не-Payload маршрутов
+    // SPA fallback
     app.get('*', (req, res, next) => {
-      // Если это Payload маршрут — пропускаем
       if (req.path.startsWith('/api') || req.path.startsWith('/admin')) {
         return next();
       }
       
-      // Иначе отдаём index.html для SPA
       const indexPath = path.join(distPath, 'index.html');
       if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
@@ -165,6 +184,7 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
 
   } catch (err) {
     console.error('❌ Failed to init Payload:', err);
+    console.error('Stack trace:', err.stack);
     process.exit(1);
   }
 })();
