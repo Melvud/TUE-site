@@ -3,23 +3,23 @@ databases:
     databaseName: tue_photonics
     user: tue_photonics
     plan: free
-    ipAllowList: []   # разрешить доступ отовсюду для Render-приложений (без внешних подключений)
+    region: frankfurt
+    ipAllowList: []
 
 services:
   - type: web
     name: tue-photonics
     env: node
     plan: free
-    region: frankfurt                    # при необходимости смените регион
+    region: frankfurt
     buildCommand: |
-      pnpm install --frozen-lockfile=false
-      pnpm run build
+      npm install
+      npm run build
       cd server && npm install --omit=dev
     startCommand: |
       cd server && npm start
     autoDeploy: true
     envVars:
-      # Обязательные
       - key: NODE_ENV
         value: production
       - key: PAYLOAD_SECRET
@@ -31,20 +31,20 @@ services:
       - key: DATABASE_SSL
         value: "true"
       - key: SERVER_URL
-        # Укажите ваш публичный URL Render после первого деплоя (например, https://tue-photonics.onrender.com)
-        # Временно можно оставить пустым — предпросмотр в админке просто не будет подставлять абсолютные ссылки
-        value: ""
-      # Seed админ для входа в Payload (/admin). Создастся один раз при первом старте.
+        value: "https://tue-photonics.onrender.com"
+      
+      # ⚠️ ВРЕМЕННО: включаем push для первого деплоя
+      - key: PAYLOAD_DB_PUSH
+        value: "true"
+      
       - key: PAYLOAD_SEED_ADMIN_EMAIL
         value: admin@tue.nl
       - key: PAYLOAD_SEED_ADMIN_PASSWORD
         generateValue: true
-      # Почта для заявок форм (Join/Contact) — получатель
+      
       - key: EMAIL_TO
         value: ivsilan2005@gmail.com
 
-      # --- SMTP (включите, чтобы формы отправляли письма) ---
-      # Заполните значениями — иначе письма просто не будут отправляться (сабмишены всё равно сохранятся в Payload).
       - key: SMTP_HOST
         value: ""
       - key: SMTP_PORT
@@ -54,12 +54,6 @@ services:
       - key: SMTP_PASS
         value: ""
 
-      # --- Хранилище медиа (рекомендуется S3 / Cloudflare R2) ---
-      # Если эти ключи не заданы, медиа будут храниться локально, что непредсказуемо на Render (эфемерная ФС).
-      # Для Cloudflare R2:
-      #   S3_ENDPOINT=https://<accountid>.r2.cloudflarestorage.com
-      #   S3_REGION=auto
-      #   S3_FORCE_PATH_STYLE=true
       - key: S3_BUCKET
         value: ""
       - key: S3_ENDPOINT

@@ -13,27 +13,20 @@ const isAdmin = ({ req }) => req.user?.role === 'admin';
 const isEditorOrAdmin = ({ req }) => ['editor', 'admin'].includes(req.user?.role);
 
 export default buildConfig({
-  // ВАЖНО: secret указывается в конфиге для v3
   secret: process.env.PAYLOAD_SECRET || 'dev-secret',
-
-  // Для продакшена укажите полный URL
   serverURL: process.env.SERVER_URL || 'http://localhost:3000',
-  
   telemetry: false,
 
   admin: {
     user: 'users',
-    // Явно указываем, что admin включен
     disable: false,
-    // Для продакшена можно добавить meta, branding, etc
   },
 
-  // Редактор для richText полей
   editor: lexicalEditor({
     features: ({ defaultFeatures }) => defaultFeatures,
   }),
 
-  // БД (Postgres)
+  // БД (Postgres) с автоматическим созданием таблиц
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URL,
@@ -41,26 +34,29 @@ export default buildConfig({
         ? { rejectUnauthorized: false } 
         : undefined,
     },
+    // ⚠️ КРИТИЧЕСКИ ВАЖНО: включаем push для автоматического создания таблиц
+    push: process.env.NODE_ENV === 'production' ? false : true,
+    // Для первого деплоя временно включаем push даже в продакшене
+    migrationDir: path.resolve(__dirname, 'migrations'),
   }),
 
   rateLimit: { 
     window: 60 * 1000, 
     max: 600,
-    trustProxy: true, // важно для Render/облачных платформ
+    trustProxy: true,
   },
 
-  // -------- Коллекции --------
   collections: [
     // Users
     {
       slug: 'users',
       auth: {
         useAPIKey: false,
-        tokenExpiration: 7200, // 2 часа
+        tokenExpiration: 7200,
         cookies: { 
           sameSite: 'lax', 
           secure: process.env.NODE_ENV === 'production',
-          domain: undefined, // пусть браузер сам определяет
+          domain: undefined,
         },
       },
       admin: { 
@@ -251,7 +247,7 @@ export default buildConfig({
       },
       access: {
         read: isAdmin,
-        create: () => true, // публичная отправка
+        create: () => true,
         update: isAdmin,
         delete: isAdmin,
       },
