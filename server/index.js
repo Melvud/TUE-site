@@ -70,24 +70,36 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
         // Создание админа при первом старте (опционально)
         const email = process.env.PAYLOAD_SEED_ADMIN_EMAIL;
         const pass = process.env.PAYLOAD_SEED_ADMIN_PASSWORD;
+        
         if (email && pass) {
           try {
+            // Проверяем существование админа
             const { docs } = await payloadInstance.find({
               collection: 'users',
               where: { email: { equals: email } },
               limit: 1,
             });
+            
             if (!docs?.length) {
+              // Создаём первого админа
               await payloadInstance.create({
                 collection: 'users',
-                data: { email, password: pass, name: 'Admin', role: 'admin' },
+                data: { 
+                  email, 
+                  password: pass, 
+                  name: 'Admin', 
+                  role: 'admin' 
+                },
               });
               console.log(`👤 Seed admin created: ${email}`);
             } else {
               console.log(`👤 Admin already exists: ${email}`);
             }
           } catch (err) {
-            console.error('❌ Seed admin failed:', err.message);
+            // Если таблица users еще не существует - это нормально при первом деплое
+            // Миграции применятся, и админ создастся при следующем рестарте
+            console.warn('⚠️  Seed admin skipped:', err.message);
+            console.warn('💡 If this is first deploy, restart the service after migrations complete');
           }
         }
       },
