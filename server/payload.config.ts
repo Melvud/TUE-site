@@ -4,20 +4,21 @@ import { buildConfig } from 'payload';
 import { postgresAdapter } from '@payloadcms/db-postgres';
 import { lexicalEditor } from '@payloadcms/richtext-lexical';
 
-// __dirname в ESM/TS
+// __dirname для ESM/TS
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Простейшие проверки ролей (без TS-типов Payload, чтобы не ловить конфликтов)
-const ROLES = ['viewer', 'editor', 'admin'] as const;
-type Role = (typeof ROLES)[number];
+// Без TS-типов / "as const"
+const ROLES = ['viewer', 'editor', 'admin'];
 
-const isAdmin = ({ req }: { req: any }) => req?.user?.role === 'admin';
-const isEditorOrAdmin = ({ req }: { req: any }) =>
-  (['editor', 'admin'] as Role[]).includes(req?.user?.role as Role);
+const isAdmin = ({ req }) => req && req.user && req.user.role === 'admin';
+const isEditorOrAdmin = ({ req }) => {
+  const role = req && req.user && req.user.role;
+  return role === 'editor' || role === 'admin';
+};
 
 export default buildConfig({
-  // ВНИМАНИЕ: в проде задайте PAYLOAD_SECRET, SERVER_URL
+  // Задайте PAYLOAD_SECRET и SERVER_URL в проде
   secret: process.env.PAYLOAD_SECRET || 'dev-secret',
   serverURL: process.env.SERVER_URL || 'http://localhost:3000',
   telemetry: false,
@@ -27,38 +28,33 @@ export default buildConfig({
     disable: false,
   },
 
-  // Редактор
   editor: lexicalEditor({
     features: ({ defaultFeatures }) => defaultFeatures,
   }),
 
-  // БД (Postgres)
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URL,
-      ssl:
-        process.env.DATABASE_SSL === 'true'
-          ? { rejectUnauthorized: false }
-          : undefined,
+      ssl: process.env.DATABASE_SSL === 'true'
+        ? { rejectUnauthorized: false }
+        : undefined,
     },
     migrationDir: path.resolve(__dirname, 'migrations'),
   }),
 
-  // Рейт-лимит
   rateLimit: {
     window: 60 * 1000,
     max: 600,
     trustProxy: true,
   },
 
-  // Коллекции
   collections: [
     // Users
     {
       slug: 'users',
       auth: {
         useAPIKey: false,
-        tokenExpiration: 60 * 60 * 2, // 2 часа
+        tokenExpiration: 7200, // 2h
         cookies: {
           sameSite: 'lax',
           secure: process.env.NODE_ENV === 'production',
@@ -124,7 +120,7 @@ export default buildConfig({
       },
       fields: [
         { name: 'title', type: 'text', required: true },
-        // В исходном проекте дата события — строка
+        // в вашем проекте хранится как текст
         { name: 'date', type: 'text', required: true },
         { name: 'googleFormUrl', type: 'text' },
         { name: 'summary', type: 'textarea' },
@@ -194,7 +190,6 @@ export default buildConfig({
       labels: { singular: 'Past Member', plural: 'Past Members' },
       admin: { useAsTitle: 'name' },
       access: {
-        // В исходнике доступ к прошлым участникам — только редакторы/админы
         read: isEditorOrAdmin,
         create: isEditorOrAdmin,
         update: isEditorOrAdmin,
@@ -212,7 +207,7 @@ export default buildConfig({
       ],
     },
 
-    // Join submissions (отправка письма)
+    // Join submissions (email hook)
     {
       slug: 'joinSubmissions',
       labels: { singular: 'Join Submission', plural: 'Join Submissions' },
@@ -230,7 +225,7 @@ export default buildConfig({
             if (operation !== 'create') return;
 
             try {
-              // динамический импорт, чтобы не тянуть модуль без надобности
+              // динамический импорт — ок в ESM
               const nodemailer = await import('nodemailer');
               const host = process.env.SMTP_HOST;
               const port = Number(process.env.SMTP_PORT || 587);
@@ -243,29 +238,28 @@ export default buildConfig({
                 return;
               }
 
-              const transporter = nodemailer.createTransport({
+              const transporter = (nodemailer as any).createTransport({
                 host,
                 port,
                 secure: port === 465,
                 auth: { user, pass },
-              } as any);
+              });
 
-              const data = (doc as any)?.payload || {};
+              const data = (doc && doc.payload) || {};
               const rows = Object.entries(data)
-                .map(
-                  ([k, v]) =>
-                    `<tr><td><strong>${k}</strong></td><td>${
-                      typeof v === 'object'
-                        ? `<pre>${JSON.stringify(v, null, 2)}</pre>`
-                        : String(v ?? '')
-                    }</td></tr>`,
+                .map(([k, v]) =>
+                  `<tr><td><strong>${k}</strong></td><td>${
+                    typeof v === 'object'
+                      ? `<pre>${JSON.stringify(v, null, 2)}</pre>`
+                      : String(v ?? '')
+                  }</td></tr>`,
                 )
                 .join('');
 
               await transporter.sendMail({
                 from: `"PhE Website" <${user}>`,
                 to,
-                subject: (data as any).subject || 'Join form',
+                subject: (data && (data as any).subject) || 'Join form',
                 html: `
                   <div style="font-family:system-ui,sans-serif">
                     <h2>Join Form Submission</h2>
@@ -277,8 +271,9 @@ export default buildConfig({
               });
 
               console.log('📧 Email sent');
-            } catch (e: any) {
-              console.error('📧 Email failed:', e?.message || e);
+            } catch (e) {
+              const msg = (e && (e as any).message) || String(e);
+              console.error('📧 Email failed:', msg);
             }
           },
         ],
@@ -286,11 +281,10 @@ export default buildConfig({
     },
   ],
 
-  // Плагины (если появятся — добавите сюда)
   plugins: [],
 
-  // Генерация типов (удобно в локалке)
   typescript: {
+    // Генерация типов при локальной разработке (не мешает на проде)
     outputFile: path.resolve(__dirname, './payload-types.ts'),
   },
 
