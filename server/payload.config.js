@@ -1,28 +1,20 @@
-// CommonJS-конфиг для CLI (payload migrate / payload serve).
-// Важно: не импортируем ESM-плагины с Top-Level Await (например, @payloadcms/richtext-lexical).
-// Чтобы не требовался editor, заменяем richText-поля на textarea только для CLI.
+// CommonJS config for CLI usage (migrations). Avoid ESM-only imports here.
+const path = require('path')
+const { buildConfig } = require('payload')
+const { postgresAdapter } = require('@payloadcms/db-postgres')
 
-const path = require('path');
-const { buildConfig } = require('payload');
-const { postgresAdapter } = require('@payloadcms/db-postgres');
-
-// Роли
-const ROLES = ['viewer', 'editor', 'admin'];
-
-const isAdmin = ({ req }) => req && req.user && req.user.role === 'admin';
+const ROLES = ['viewer', 'editor', 'admin']
+const isAdmin = ({ req }) => req && req.user && req.user.role === 'admin'
 const isEditorOrAdmin = ({ req }) => {
-  const role = req && req.user && req.user.role;
-  return role === 'editor' || role === 'admin';
-};
+  const role = req && req.user && req.user.role
+  return role === 'editor' || role === 'admin'
+}
 
 module.exports = buildConfig({
   secret: process.env.PAYLOAD_SECRET || 'dev-secret',
   serverURL: process.env.SERVER_URL || 'http://localhost:3000',
   telemetry: false,
-
   admin: { user: 'users', disable: false },
-
-  // editor: ...  <-- не задаём, чтобы не подключать ESM-плагины в CLI
 
   db: postgresAdapter({
     pool: {
@@ -35,7 +27,6 @@ module.exports = buildConfig({
   rateLimit: { window: 60 * 1000, max: 600, trustProxy: true },
 
   collections: [
-    // Users
     {
       slug: 'users',
       auth: {
@@ -52,12 +43,10 @@ module.exports = buildConfig({
           type: 'select',
           required: true,
           defaultValue: 'editor',
-          options: ROLES.map((r) => ({ label: r, value: r })),
+          options: ROLES.map(r => ({ label: r, value: r })),
         },
       ],
     },
-
-    // Media
     {
       slug: 'media',
       labels: { singular: 'Media', plural: 'Media' },
@@ -66,8 +55,6 @@ module.exports = buildConfig({
       access: { read: () => true, create: isEditorOrAdmin, update: isEditorOrAdmin, delete: isEditorOrAdmin },
       fields: [{ name: 'alt', type: 'text' }, { name: 'caption', type: 'textarea' }],
     },
-
-    // Events (content: textarea вместо richText)
     {
       slug: 'events',
       labels: { singular: 'Event', plural: 'Events' },
@@ -79,7 +66,6 @@ module.exports = buildConfig({
         { name: 'date', type: 'text', required: true },
         { name: 'googleFormUrl', type: 'text' },
         { name: 'summary', type: 'textarea' },
-        // ⬇️ было: type: 'richText'
         { name: 'content', type: 'textarea' },
         { name: 'published', type: 'checkbox', defaultValue: false },
         { name: 'latest', type: 'checkbox', defaultValue: false },
@@ -87,8 +73,6 @@ module.exports = buildConfig({
         { name: 'cover', type: 'upload', relationTo: 'media' },
       ],
     },
-
-    // News (content: textarea вместо richText)
     {
       slug: 'news',
       labels: { singular: 'News', plural: 'News' },
@@ -100,15 +84,12 @@ module.exports = buildConfig({
         { name: 'date', type: 'date', required: true },
         { name: 'author', type: 'text' },
         { name: 'summary', type: 'textarea' },
-        // ⬇️ было: type: 'richText'
         { name: 'content', type: 'textarea' },
         { name: 'published', type: 'checkbox', defaultValue: false },
         { name: 'publishAt', type: 'date' },
         { name: 'cover', type: 'upload', relationTo: 'media' },
       ],
     },
-
-    // Members
     {
       slug: 'members',
       labels: { singular: 'Member', plural: 'Members' },
@@ -124,8 +105,6 @@ module.exports = buildConfig({
         { name: 'photo', type: 'upload', relationTo: 'media' },
       ],
     },
-
-    // MembersPast
     {
       slug: 'membersPast',
       labels: { singular: 'Past Member', plural: 'Past Members' },
@@ -142,68 +121,15 @@ module.exports = buildConfig({
         { name: 'photo', type: 'upload', relationTo: 'media' },
       ],
     },
-
-    // Join submissions (email hook)
     {
       slug: 'joinSubmissions',
       labels: { singular: 'Join Submission', plural: 'Join Submissions' },
       admin: { useAsTitle: 'id' },
       access: { read: isAdmin, create: () => true, update: isAdmin, delete: isAdmin },
       fields: [{ name: 'payload', type: 'json', required: true }],
-      hooks: {
-        afterChange: [
-          async ({ doc, operation }) => {
-            if (operation !== 'create') return;
-            try {
-              const nodemailer = require('nodemailer');
-              const host = process.env.SMTP_HOST;
-              const port = Number(process.env.SMTP_PORT || 587);
-              const user = process.env.SMTP_USER;
-              const pass = process.env.SMTP_PASS;
-              const to = process.env.EMAIL_TO || 'ivsilan2005@gmail.com';
-
-              if (!host || !user || !pass) {
-                console.warn('📧 SMTP not configured');
-                return;
-              }
-
-              const transporter = nodemailer.createTransport({
-                host,
-                port,
-                secure: port === 465,
-                auth: { user, pass },
-              });
-
-              const data = (doc && doc.payload) || {};
-              const rows = Object.entries(data)
-                .map(([k, v]) => `<tr><td><strong>${k}</strong></td><td>${
-                  typeof v === 'object' ? `<pre>${JSON.stringify(v, null, 2)}</pre>` : String(v ?? '')
-                }</td></tr>`)
-                .join('');
-
-              await transporter.sendMail({
-                from: `"PhE Website" <${user}>`,
-                to,
-                subject: (data && data.subject) || 'Join form',
-                html: `<div style="font-family:system-ui,sans-serif">
-                         <h2>Join Form Submission</h2>
-                         <table border="1" cellspacing="0" cellpadding="6">${rows}</table>
-                       </div>`,
-              });
-
-              console.log('📧 Email sent');
-            } catch (e) {
-              console.error('📧 Email failed:', (e && e.message) || String(e));
-            }
-          },
-        ],
-      },
     },
   ],
 
-  plugins: [],
-
   typescript: { outputFile: path.resolve(__dirname, './payload-types.ts') },
-
   graphQL: { disable: false },
-});
+})

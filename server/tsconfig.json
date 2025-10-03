@@ -1,0 +1,16 @@
+{
+  "extends": "./node_modules/next/tsconfig.server.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@payload-config": ["./payload.config.mjs"]
+    },
+    "jsx": "react-jsx",
+    "strict": true,
+    "types": ["node"]
+  },
+  "include": ["./app", "./payload.config.mjs"]
+}
