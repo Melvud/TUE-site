@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 /**
- * Express + Payload CMS (ESM-конфиг .mjs) + Vite static.
+ * Express + Payload CMS (ESM-конфиг импортируем вручную) + Vite static.
  * Админка только Payload на /admin. SPA не перехватывает /admin.
  */
 
@@ -14,15 +14,12 @@ const { v4: uuidv4 } = require('uuid');
 
 dotenv.config();
 
-// Указываем Payload на ESM-конфиг
-process.env.PAYLOAD_CONFIG_PATH = path.resolve(__dirname, 'payload.config.mjs');
-
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Локальные загрузки (вспомогательное; для продакшена используйте S3/R2 через Payload)
+// ── Локальные загрузки (вспомогательно; для продакшена используйте S3/R2 в Payload) ──
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
@@ -40,14 +37,34 @@ app.post('/api/upload-local', upload.single('file'), (req, res) => {
   res.json({ url: `/uploads/${req.file.filename}` });
 });
 
-// Инициализация Payload (ESM в CommonJS через dynamic import)
+// ── Инициализация Payload (ESM в CommonJS через dynamic import) ──
 (async () => {
-  const payloadMod = await import('payload'); // ESM
+  const configPath = path.resolve(__dirname, 'payload.config.mjs');
+  console.log('➡️  Trying to load Payload config at:', configPath);
+  if (!fs.existsSync(configPath)) {
+    console.error('❌ Payload config file not found at:', configPath);
+    throw new Error('payload.config.mjs is missing. Ensure it exists in /server.');
+  }
+
+  // Импортируем сам Payload (ESM)
+  const payloadMod = await import('payload');
   const payload = payloadMod.default ?? payloadMod;
+
+  // Импортируем ваш конфиг (ESM) и берём default-экспорт
+  const cfgMod = await import(configPath + `?t=${Date.now()}`); // cache-bust на всякий случай
+  const payloadConfig = cfgMod.default ?? cfgMod;
+  if (!payloadConfig || typeof payloadConfig !== 'object') {
+    console.error('❌ payload.config.mjs does not export default object.');
+    throw new Error('Invalid payload.config.mjs export');
+  }
+
+  console.log('✅ Payload config loaded.');
 
   await payload.init({
     secret: process.env.PAYLOAD_SECRET || 'dev-secret',
     express: app,
+    // КЛЮЧЕВОЕ: передаем конфиг напрямую, не полагаясь на PAYLOAD_CONFIG_PATH
+    config: payloadConfig,
     onInit: async () => {
       console.log('✅ Payload CMS is ready at /admin');
 
@@ -75,7 +92,7 @@ app.post('/api/upload-local', upload.single('file'), (req, res) => {
     },
   });
 
-  // Раздача фронтенда (Vite build)
+  // ── Раздача фронтенда (Vite build) ──
   const distPath = path.resolve(__dirname, '..', 'dist');
   app.use(express.static(distPath, { index: 'index.html', maxAge: '7d' }));
 
