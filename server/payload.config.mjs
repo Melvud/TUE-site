@@ -12,10 +12,11 @@ const isEditorOrAdmin = ({ req }) => ['editor', 'admin'].includes(req.user?.role
 
 // === Конфиг Payload ===
 export default {
+  // ВАЖНО: секрет прямо в конфиге (v3 так требует)
+  secret: process.env.PAYLOAD_SECRET || 'dev-secret',
+
   serverURL: process.env.SERVER_URL || '',
-  admin: {
-    user: 'users',
-  },
+  admin: { user: 'users' },
   telemetry: false,
   rateLimit: { window: 60 * 1000, max: 600 },
 
@@ -53,7 +54,7 @@ export default {
       ],
     },
 
-    // ===== Media (upload; локально без плагина S3) =====
+    // ===== Media (локальные upload; без S3-плагина) =====
     {
       slug: 'media',
       labels: { singular: 'Media', plural: 'Media' },
@@ -96,12 +97,7 @@ export default {
         { name: 'published', type: 'checkbox', defaultValue: false },
         { name: 'latest', type: 'checkbox', defaultValue: false },
         { name: 'publishAt', type: 'date' },
-        {
-          name: 'cover',
-          type: 'relationship',
-          relationTo: 'media',
-          admin: { description: 'Обложка из Media' },
-        },
+        { name: 'cover', type: 'relationship', relationTo: 'media', admin: { description: 'Обложка из Media' } },
       ],
     },
 
@@ -129,11 +125,7 @@ export default {
         { name: 'content', type: 'richText' },
         { name: 'published', type: 'checkbox', defaultValue: false },
         { name: 'publishAt', type: 'date' },
-        {
-          name: 'cover',
-          type: 'relationship',
-          relationTo: 'media',
-        },
+        { name: 'cover', type: 'relationship', relationTo: 'media' },
       ],
     },
 
@@ -372,7 +364,6 @@ export default {
     },
   ],
 
-  // Без plugins — плагин хранилища отключён
   plugins: [],
 
   typescript: { outputFile: path.resolve(__dirname, './payload-types.ts') },
