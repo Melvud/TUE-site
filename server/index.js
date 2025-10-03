@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 /**
- * Express + Payload CMS (ESM-конфиг импортируем вручную) + Vite static.
- * Админка только Payload на /admin. SPA не перехватывает /admin.
+ * Express + Payload CMS (конфиг импортируем вручную) + Vite static.
+ * Админка Payload на /admin. SPA не перехватывает /admin и /api.
  */
 
 const path = require('path');
@@ -14,14 +14,15 @@ const { v4: uuidv4 } = require('uuid');
 
 dotenv.config();
 
-const projectRoot = path.resolve(__dirname, '..'); // ← корень репозитория (над /server)
-process.chdir(projectRoot);
-console.log('📁 CWD set to:', process.cwd());
-
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Переключаем рабочую директорию на корень проекта — нужно Payload для Admin UI
+const projectRoot = path.resolve(__dirname, '..');
+process.chdir(projectRoot);
+console.log('📁 CWD set to:', process.cwd());
 
 // ── Локальные загрузки (вспомогательно; для продакшена используйте S3/R2 в Payload) ──
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
@@ -50,29 +51,27 @@ app.post('/api/upload-local', upload.single('file'), (req, res) => {
     throw new Error('payload.config.mjs is missing. Ensure it exists in /server.');
   }
 
-  // Импортируем сам Payload (ESM)
+  // Импортируем Payload (ESM)
   const payloadMod = await import('payload');
   const payload = payloadMod.default ?? payloadMod;
 
-  // Импортируем ваш конфиг (ESM) и берём default-экспорт
-  const cfgMod = await import(configPath + `?t=${Date.now()}`); // cache-bust на всякий случай
+  // Импортируем ваш конфиг (ESM)
+  const cfgMod = await import(configPath + `?t=${Date.now()}`);
   const payloadConfig = cfgMod.default ?? cfgMod;
   if (!payloadConfig || typeof payloadConfig !== 'object') {
     console.error('❌ payload.config.mjs does not export default object.');
     throw new Error('Invalid payload.config.mjs export');
   }
-
   console.log('✅ Payload config loaded.');
 
   await payload.init({
     secret: process.env.PAYLOAD_SECRET || 'dev-secret',
     express: app,
-    // КЛЮЧЕВОЕ: передаем конфиг напрямую, не полагаясь на PAYLOAD_CONFIG_PATH
     config: payloadConfig,
     onInit: async () => {
       console.log('✅ Payload CMS is ready at /admin');
 
-      // Seed admin-пользователь один раз, если задан в ENV
+      // Пробуем создать сид-админа, если задан ENV
       const seedEmail = process.env.PAYLOAD_SEED_ADMIN_EMAIL;
       const seedPass = process.env.PAYLOAD_SEED_ADMIN_PASSWORD;
       if (seedEmail && seedPass) {
@@ -96,13 +95,25 @@ app.post('/api/upload-local', upload.single('file'), (req, res) => {
     },
   });
 
+  // ⬇️ КРИТИЧНО: явно монтируем роутер Payload (чтобы /admin и /api точно работали)
+  if (payload.expressRouter) {
+    app.use(payload.expressRouter);
+  } else if (payload.router) {
+    app.use(payload.router);
+  }
+
   // ── Раздача фронтенда (Vite build) ──
-  const distPath = path.resolve(__dirname, '..', 'dist');
+  const distPath = path.resolve(projectRoot, 'dist');
   app.use(express.static(distPath, { index: 'index.html', maxAge: '7d' }));
 
-  // SPA fallback — не перехватывать /admin, /media и /api
+  // SPA fallback — НЕ перехватывать /admin, /api, /media
   app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api/') || req.path.startsWith('/admin') || req.path.startsWith('/media')) {
+    if (
+      req.path.startsWith('/api/') ||
+      req.path === '/api' ||
+      req.path.startsWith('/admin') ||
+      req.path.startsWith('/media')
+    ) {
       return next();
     }
     res.sendFile(path.join(distPath, 'index.html'));
