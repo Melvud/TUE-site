@@ -1,7 +1,7 @@
 {
-  "name": "photonics-society-eindhoven",
+  "name": "tue-photonics-site",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -38,12 +38,7 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.9.1",
-    "typed.js": "^2.1.0",
-    "express": "^4.21.1",
-    "cors": "^2.8.5",
-    "multer": "^1.4.5-lts.1",
-    "dotenv": "^16.4.5",
-    "nodemailer": "^6.9.7"
+    "typed.js": "^2.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
@@ -52,7 +47,7 @@
     "vite": "^6.2.0",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
-    "concurrently": "^9.1.2",
-    "nodemon": "^3.1.7"
+    "autoprefixer": "^10.4.17",
+    "concurrently": "^9.1.2"
   }
 }

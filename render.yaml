@@ -1,26 +1,17 @@
 services:
   - type: web
-    name: tue-site-backend
-    env: node
-    plan: free
-    buildCommand: "cd server && npm install"
-    startCommand: "node server/index.js"
+    name: tue-photonics
+    runtime: node
+    buildCommand: npm install --include=dev && npm run build && cd server && npm install
+    startCommand: cd server && npm start
     envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
       - key: ADMIN_TOKEN
-        value: admin-secret
+        generateValue: true
       - key: ADMIN_EMAIL
-        value: admin@tue.local
+        value: admin@tue.nl
       - key: ADMIN_PASSWORD
-        value: admin123
-      - key: ADMIN_NAME
-        value: "Site Admin"
-
-  - type: web
-    name: tue-site-frontend
-    env: static
-    buildCommand: "pnpm install && pnpm run build"
-    staticPublishPath: dist
-    envVars:
-      - key: VITE_API_URL
-        value: "https://tue-site-backend.onrender.com/api"
-        
+        generateValue: true
