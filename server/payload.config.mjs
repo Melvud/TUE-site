@@ -1,6 +1,7 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { postgresAdapter } from '@payloadcms/db-postgres';
+import { lexicalEditor } from '@payloadcms/richtext-lexical';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,11 +21,17 @@ export default {
   telemetry: false,
   rateLimit: { window: 60 * 1000, max: 600 },
 
+  // ВКЛЮЧАЕМ редактор для richText-полей
+  editor: lexicalEditor({
+    // можно настраивать features, но дефолта достаточно
+    features: ({ defaultFeatures }) => defaultFeatures
+  }),
+
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
-    },
+      ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined
+    }
   }),
 
   collections: [
@@ -33,14 +40,14 @@ export default {
       slug: 'users',
       auth: {
         useAPIKey: false,
-        cookies: { sameSite: 'lax', secure: false },
+        cookies: { sameSite: 'lax', secure: false }
       },
       admin: { useAsTitle: 'email' },
       access: {
         read: isEditorOrAdmin,
         create: isAdmin,
         update: isAdmin,
-        delete: isAdmin,
+        delete: isAdmin
       },
       fields: [
         { name: 'name', type: 'text' },
@@ -49,9 +56,9 @@ export default {
           type: 'select',
           required: true,
           defaultValue: 'editor',
-          options: ROLES.map((r) => ({ label: r, value: r })),
-        },
-      ],
+          options: ROLES.map((r) => ({ label: r, value: r }))
+        }
+      ]
     },
 
     // ===== Media (локальные upload; без S3-плагина) =====
@@ -64,12 +71,12 @@ export default {
         read: () => true,
         create: isEditorOrAdmin,
         update: isEditorOrAdmin,
-        delete: isEditorOrAdmin,
+        delete: isEditorOrAdmin
       },
       fields: [
         { name: 'alt', type: 'text' },
-        { name: 'caption', type: 'textarea' },
-      ],
+        { name: 'caption', type: 'textarea' }
+      ]
     },
 
     // ===== Events =====
@@ -79,13 +86,13 @@ export default {
       admin: {
         useAsTitle: 'title',
         defaultColumns: ['title', 'date', 'published', 'updatedAt'],
-        preview: (doc) => `${process.env.SERVER_URL || ''}/preview?type=event&id=${doc?.id}`,
+        preview: (doc) => `${process.env.SERVER_URL || ''}/preview?type=event&id=${doc?.id}`
       },
       access: {
         read: () => true,
         create: isEditorOrAdmin,
         update: isEditorOrAdmin,
-        delete: isEditorOrAdmin,
+        delete: isEditorOrAdmin
       },
       versions: { drafts: true, maxPerDoc: 20 },
       fields: [
@@ -97,8 +104,8 @@ export default {
         { name: 'published', type: 'checkbox', defaultValue: false },
         { name: 'latest', type: 'checkbox', defaultValue: false },
         { name: 'publishAt', type: 'date' },
-        { name: 'cover', type: 'relationship', relationTo: 'media', admin: { description: 'Обложка из Media' } },
-      ],
+        { name: 'cover', type: 'relationship', relationTo: 'media', admin: { description: 'Обложка из Media' } }
+      ]
     },
 
     // ===== News =====
@@ -108,13 +115,13 @@ export default {
       admin: {
         useAsTitle: 'title',
         defaultColumns: ['title', 'date', 'published', 'updatedAt'],
-        preview: (doc) => `${process.env.SERVER_URL || ''}/preview?type=news&id=${doc?.id}`,
+        preview: (doc) => `${process.env.SERVER_URL || ''}/preview?type=news&id=${doc?.id}`
       },
       access: {
         read: () => true,
         create: isEditorOrAdmin,
         update: isEditorOrAdmin,
-        delete: isEditorOrAdmin,
+        delete: isEditorOrAdmin
       },
       versions: { drafts: true, maxPerDoc: 20 },
       fields: [
@@ -125,8 +132,8 @@ export default {
         { name: 'content', type: 'richText' },
         { name: 'published', type: 'checkbox', defaultValue: false },
         { name: 'publishAt', type: 'date' },
-        { name: 'cover', type: 'relationship', relationTo: 'media' },
-      ],
+        { name: 'cover', type: 'relationship', relationTo: 'media' }
+      ]
     },
 
     // ===== Members (current) =====
@@ -138,7 +145,7 @@ export default {
         read: () => true,
         create: isEditorOrAdmin,
         update: isEditorOrAdmin,
-        delete: isEditorOrAdmin,
+        delete: isEditorOrAdmin
       },
       fields: [
         { name: 'name', type: 'text', required: true },
@@ -147,8 +154,8 @@ export default {
         { name: 'email', type: 'text' },
         { name: 'linkedin', type: 'text' },
         { name: 'instagram', type: 'text' },
-        { name: 'photo', type: 'relationship', relationTo: 'media' },
-      ],
+        { name: 'photo', type: 'relationship', relationTo: 'media' }
+      ]
     },
 
     // ===== Members Past =====
@@ -160,7 +167,7 @@ export default {
         read: isEditorOrAdmin,
         create: isEditorOrAdmin,
         update: isEditorOrAdmin,
-        delete: isEditorOrAdmin,
+        delete: isEditorOrAdmin
       },
       fields: [
         { name: 'originalId', type: 'text' },
@@ -170,8 +177,8 @@ export default {
         { name: 'email', type: 'text' },
         { name: 'linkedin', type: 'text' },
         { name: 'instagram', type: 'text' },
-        { name: 'photo', type: 'relationship', relationTo: 'media' },
-      ],
+        { name: 'photo', type: 'relationship', relationTo: 'media' }
+      ]
     },
 
     // ===== Join submissions (формы) + email-хук =====
@@ -183,7 +190,7 @@ export default {
         read: isAdmin,
         create: () => true,
         update: isAdmin,
-        delete: isAdmin,
+        delete: isAdmin
       },
       fields: [{ name: 'payload', type: 'json', required: true }],
       hooks: {
@@ -200,7 +207,7 @@ export default {
               if (!host || !user || !pass) return;
 
               const transporter = nodemailer.createTransport({
-                host, port, secure: port === 465, auth: { user, pass },
+                host, port, secure: port === 465, auth: { user, pass }
               });
 
               const data = doc?.payload || {};
@@ -214,15 +221,15 @@ export default {
                 to,
                 subject,
                 text: Object.entries(data).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join('\n'),
-                html: `<div style="font-family:system-ui,Segoe UI,Roboto,sans-serif"><h2>Join form submission</h2><table border="1" cellspacing="0" cellpadding="6">${rows}</table></div>`,
+                html: `<div style="font-family:system-ui,Segoe UI,Roboto,sans-serif"><h2>Join form submission</h2><table border="1" cellspacing="0" cellpadding="6">${rows}</table></div>`
               });
             } catch (e) {
               console.warn('[email hook] failed:', e.message);
             }
-          },
-        ],
-      },
-    },
+          }
+        ]
+      }
+    }
   ],
 
   // ===== Globals =====
@@ -238,7 +245,7 @@ export default {
           name: 'typedPhrases',
           type: 'array',
           label: 'Ticker / Typed phrases',
-          fields: [{ name: 'value', type: 'text', required: true }],
+          fields: [{ name: 'value', type: 'text', required: true }]
         },
         {
           name: 'hero',
@@ -248,9 +255,9 @@ export default {
             { name: 'subtitle', type: 'text' },
             { name: 'ctaText', type: 'text' },
             { name: 'ctaUrl', type: 'text' },
-            { name: 'image', type: 'relationship', relationTo: 'media' },
-          ],
-        },
+            { name: 'image', type: 'relationship', relationTo: 'media' }
+          ]
+        }
       ],
       hooks: {
         afterRead: [
@@ -259,7 +266,7 @@ export default {
               data.typedPhrases = data.typedPhrases.map((x) => x?.value || '');
             }
             return data;
-          },
+          }
         ],
         beforeChange: [
           ({ data }) => {
@@ -267,9 +274,9 @@ export default {
               data.typedPhrases = data.typedPhrases.map((s) => ({ value: s }));
             }
             return data;
-          },
-        ],
-      },
+          }
+        ]
+      }
     },
     {
       slug: 'about',
@@ -291,17 +298,17 @@ export default {
                 { label: 'text-image', value: 'text-image' },
                 { label: 'image-text', value: 'image-text' },
                 { label: 'text only', value: 'text' },
-                { label: 'image only', value: 'image' },
+                { label: 'image only', value: 'image' }
               ],
               defaultValue: 'text-image',
-              required: true,
+              required: true
             },
             { name: 'title', type: 'text' },
             { name: 'text', type: 'richText' },
-            { name: 'image', type: 'relationship', relationTo: 'media' },
-          ],
-        },
-      ],
+            { name: 'image', type: 'relationship', relationTo: 'media' }
+          ]
+        }
+      ]
     },
     {
       slug: 'join',
@@ -324,7 +331,7 @@ export default {
               name: 'type',
               type: 'select',
               options: ['text', 'email', 'textarea', 'select', 'checkbox'],
-              defaultValue: 'text',
+              defaultValue: 'text'
             },
             { name: 'required', type: 'checkbox', defaultValue: false },
             { name: 'placeholder', type: 'text' },
@@ -332,10 +339,10 @@ export default {
               name: 'options',
               type: 'array',
               admin: { condition: (_, sibling) => sibling?.type === 'select' },
-              fields: [{ name: 'value', type: 'text' }],
-            },
-          ],
-        },
+              fields: [{ name: 'value', type: 'text' }]
+            }
+          ]
+        }
       ],
       hooks: {
         afterRead: [
@@ -343,29 +350,29 @@ export default {
             if (Array.isArray(data.formFields)) {
               data.formFields = data.formFields.map((f) => ({
                 ...f,
-                options: Array.isArray(f.options) ? f.options.map((o) => o.value) : undefined,
+                options: Array.isArray(f.options) ? f.options.map((o) => o.value) : undefined
               }));
             }
             return data;
-          },
+          }
         ],
         beforeChange: [
           ({ data }) => {
             if (Array.isArray(data.formFields)) {
               data.formFields = data.formFields.map((f) => ({
                 ...f,
-                options: Array.isArray(f.options) ? f.options.map((v) => ({ value: v })) : undefined,
+                options: Array.isArray(f.options) ? f.options.map((v) => ({ value: v })) : undefined
               }));
             }
             return data;
-          },
-        ],
-      },
-    },
+          }
+        ]
+      }
+    }
   ],
 
   plugins: [],
 
   typescript: { outputFile: path.resolve(__dirname, './payload-types.ts') },
-  graphQL: { disable: false },
+  graphQL: { disable: false }
 };
