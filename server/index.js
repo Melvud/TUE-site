@@ -67,13 +67,27 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
       onInit: async (payloadInstance) => {
         console.log('✅ Payload CMS initialized');
 
-        // Создание админа при первом старте (опционально)
+        // Создание админа при первом старте
         const email = process.env.PAYLOAD_SEED_ADMIN_EMAIL;
         const pass = process.env.PAYLOAD_SEED_ADMIN_PASSWORD;
         
         if (email && pass) {
           try {
-            // Проверяем существование админа
+            // Сначала удаляем временного админа из SQL (если есть)
+            try {
+              await payloadInstance.delete({
+                collection: 'users',
+                where: {
+                  email: { equals: email },
+                  hash: { equals: '$2a$10$dummyhashfornow' },
+                },
+              });
+              console.log('🗑️  Removed temporary admin from SQL');
+            } catch (e) {
+              // Игнорируем если не найден
+            }
+
+            // Проверяем существование реального админа
             const { docs } = await payloadInstance.find({
               collection: 'users',
               where: { email: { equals: email } },
@@ -81,7 +95,7 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
             });
             
             if (!docs?.length) {
-              // Создаём первого админа
+              // Создаём админа с правильным хешем пароля
               await payloadInstance.create({
                 collection: 'users',
                 data: { 
@@ -92,14 +106,12 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
                 },
               });
               console.log(`👤 Seed admin created: ${email}`);
+              console.log(`🔑 Password: ${pass}`);
             } else {
               console.log(`👤 Admin already exists: ${email}`);
             }
           } catch (err) {
-            // Если таблица users еще не существует - это нормально при первом деплое
-            // Миграции применятся, и админ создастся при следующем рестарте
-            console.warn('⚠️  Seed admin skipped:', err.message);
-            console.warn('💡 If this is first deploy, restart the service after migrations complete');
+            console.error('❌ Seed admin failed:', err.message);
           }
         }
       },

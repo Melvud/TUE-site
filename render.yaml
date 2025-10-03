@@ -1,11 +1,3 @@
-databases:
-  - name: tue-photonics-db
-    databaseName: tue_photonics
-    user: tue_photonics
-    plan: free
-    region: frankfurt
-    ipAllowList: []
-
 services:
   - type: web
     name: tue-photonics
@@ -13,32 +5,34 @@ services:
     plan: free
     region: frankfurt
     buildCommand: |
-      pnpm install
-      pnpm run build
+      npm install
+      npm run build
       cd server && npm install --omit=dev
-    # ✅ ИСПРАВЛЕНО: убран сброс payload_migrations, добавлен seed
-    startCommand: |
-      cd server && npx payload migrate && node index.js
+    
+    # ✅ Просто запускаем сервер (миграции уже выполнены вручную в Neon)
+    startCommand: cd server && node index.js
+    
     autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
       - key: PAYLOAD_SECRET
         generateValue: true
+      
+      # 👇 Ваш Neon connection string
       - key: DATABASE_URL
-        fromDatabase:
-          name: tue-photonics-db
-          property: connectionString
+        value: postgresql://neondb_owner:npg_Ch4uga0QmOZU@ep-twilight-leaf-agwm7b8r-pooler.c-2.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
       - key: DATABASE_SSL
         value: "true"
+      
       - key: SERVER_URL
         value: "https://tue-photonics.onrender.com"
       
-      # Первый админ создастся автоматически при старте
+      # 👇 Credentials для первого админа
       - key: PAYLOAD_SEED_ADMIN_EMAIL
         value: admin@tue.nl
       - key: PAYLOAD_SEED_ADMIN_PASSWORD
-        generateValue: true
+        value: YourStrongPassword123!
       
       - key: EMAIL_TO
         value: ivsilan2005@gmail.com
