@@ -95,7 +95,22 @@ export interface JoinFormField {
 }
 
 export interface JoinUsPageContent {
-  introText: string; // HTML
+  /**
+   * Introductory content shown above the join form. This can include a brief welcome
+   * message or instructions. HTML is allowed.
+   */
+  introText: string;
+  /**
+   * Additional rich HTML content describing membership tiers, benefits and how to join.
+   * When unset, the admin UI will fall back to a sensible default with details about
+   * PhE membership options and Optica student membership. Editors can customise this
+   * freely to match the organisation’s offerings.
+   */
+  detailsHtml?: string;
+  /**
+   * Dynamic list of fields shown in the join form. Admins can add or remove fields
+   * as needed. Each field has a name, label, type and other metadata.
+   */
   formFields: JoinFormField[];
 }
 

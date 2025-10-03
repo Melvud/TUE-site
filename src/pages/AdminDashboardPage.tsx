@@ -1089,7 +1089,7 @@ const AdminDashboardPage: React.FC = () => {
               </div>
               <div>
                 <label className="block text-sm mb-2 text-slate-300">
-                  Typed Phrases (one per line)
+                  Ticker Texts (one per line)
                 </label>
                 <textarea
                   className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2"
@@ -1281,6 +1281,17 @@ const AdminDashboardPage: React.FC = () => {
                   value={joinUsPageData?.introText || ''}
                   onChange={(html) =>
                     setJoinUsPageData((prev) => prev && { ...prev, introText: html })
+                  }
+                  token={token}
+                />
+              </div>
+              {/* Additional membership details section */}
+              <div>
+                <label className="block text-sm mb-2 text-slate-300">Details (HTML)</label>
+                <RichTextEditor
+                  value={joinUsPageData?.detailsHtml || ''}
+                  onChange={(html) =>
+                    setJoinUsPageData((prev) => prev && { ...prev, detailsHtml: html })
                   }
                   token={token}
                 />
@@ -1503,6 +1514,13 @@ const AdminDashboardPage: React.FC = () => {
                 className="prose prose-invert max-w-none mb-6"
                 dangerouslySetInnerHTML={{ __html: joinUsPageData.introText }}
               />
+              {/* Show additional membership details if present */}
+              {joinUsPageData.detailsHtml && (
+                <div
+                  className="prose prose-invert max-w-none mb-6"
+                  dangerouslySetInnerHTML={{ __html: joinUsPageData.detailsHtml }}
+                />
+              )}
               <div className="bg-slate-800 p-4 rounded">
                 <h4 className="font-bold mb-3">Form Fields:</h4>
                 {joinUsPageData.formFields.map((field) => (
