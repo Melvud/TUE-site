@@ -3,6 +3,7 @@ databases:
     databaseName: tue_photonics
     user: tue_photonics
     plan: free
+    region: frankfurt
     ipAllowList: []
 
 services:
@@ -15,9 +16,9 @@ services:
       pnpm install
       pnpm run build
       cd server && npm install --omit=dev
-    # ⚠️ ВАЖНО: запускаем миграции перед стартом
+    # ✅ ИСПРАВЛЕНО: убран сброс payload_migrations, добавлен seed
     startCommand: |
-      cd server && npx payload migrate && npm start
+      cd server && npx payload migrate && node index.js
     autoDeploy: true
     envVars:
       - key: NODE_ENV
@@ -31,8 +32,9 @@ services:
       - key: DATABASE_SSL
         value: "true"
       - key: SERVER_URL
-        value: "https://tue-photonics-x6ux.onrender.com"
+        value: "https://tue-photonics.onrender.com"
       
+      # Первый админ создастся автоматически при старте
       - key: PAYLOAD_SEED_ADMIN_EMAIL
         value: admin@tue.nl
       - key: PAYLOAD_SEED_ADMIN_PASSWORD
