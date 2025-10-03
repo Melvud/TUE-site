@@ -2,7 +2,7 @@ services:
   - type: web
     name: tue-photonics
     runtime: node
-    buildCommand: npm install --include=dev && npm run build && cd server && npm install
+    buildCommand: pnpm install --include=dev && pnpm run build && cd server && npm install
     startCommand: cd server && npm start
     envVars:
       - key: NODE_ENV
