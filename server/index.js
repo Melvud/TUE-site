@@ -1,489 +1,315 @@
-// server/index.js
-const express = require('express');
-const cors = require('cors');
+/* eslint-disable no-console */
+/**
+ * TU/e Photonics — API и статический сервер для одной инстанции.
+ * CommonJS (type: commonjs в server/package.json).
+ * 
+ * Возможности:
+ * - Раздача фронта из ../dist + SPA fallback
+ * - Auth: POST /api/auth/login, GET /api/auth/me
+ * - CRUD: /api/news, /api/events, /api/members, /api/pages
+ *   (админ-операции под /api/<entity>/admin* с requireAuth)
+ * - Uploads: POST /api/upload (multer), статика /uploads
+ * - Forms: POST /api/forms/submit — отправка письма на ivsilan2005@gmail.com
+ *
+ * ENV:
+ * - PORT
+ * - ADMIN_TOKEN (обязателен для админ-маршрутов)
+ * - ADMIN_EMAIL, ADMIN_PASSWORD (для /api/auth/login)
+ * - EMAIL_TO (по умолчанию ivsilan2005@gmail.com)
+ * - SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS (для отправки почты)
+ */
+
 const path = require('path');
 const fs = require('fs');
+const express = require('express');
+const cors = require('cors');
+const dotenv = require('dotenv');
 const multer = require('multer');
+const { v4: uuidv4 } = require('uuid');
+
+dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-// Middleware
+// ---------- базовая конфигурация ----------
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
-// ============ DIRECTORIES SETUP ============
-const uploadsDir = path.join(__dirname, 'uploads');
-const dbDir = path.join(__dirname, 'db');
+// Папки данных/загрузок
+const ROOT_DIR = __dirname;
+const DATA_DIR = path.join(ROOT_DIR, 'data');
+const UPLOADS_DIR = path.join(ROOT_DIR, 'uploads');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
-}
-
-// Serve uploads
-app.use('/uploads', express.static(uploadsDir));
-
-// ============ FILE UPLOAD SETUP ============
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    cb(null, `${uniqueSuffix}${ext}`);
-  },
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif|webp|svg/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-    if (mimetype && extname) {
-      return cb(null, true);
-    }
-    cb(new Error('Only image files are allowed!'));
-  },
-});
-
-// ============ DATABASE (JSON FILES) ============
-const eventsFile = path.join(dbDir, 'events.json');
-const newsFile = path.join(dbDir, 'news.json');
-const membersFile = path.join(dbDir, 'members.json');
-const pastMembersFile = path.join(dbDir, 'past-members.json');
-const pagesFile = path.join(dbDir, 'pages.json');
-
-const readJSON = (file) => {
+// ---------- утилиты работы с JSON-файлами ----------
+const jsonFile = (name) => path.join(DATA_DIR, `${name}.json`);
+const readJSON = (name, fallback) => {
+  const f = jsonFile(name);
+  if (!fs.existsSync(f)) return fallback;
   try {
-    if (fs.existsSync(file)) {
-      return JSON.parse(fs.readFileSync(file, 'utf8'));
-    }
+    return JSON.parse(fs.readFileSync(f, 'utf8'));
   } catch (e) {
-    console.error(`Error reading ${file}:`, e);
+    console.warn(`[data] broken JSON ${f}:`, e.message);
+    return fallback;
   }
-  return null;
+};
+const writeJSON = (name, data) => {
+  fs.writeFileSync(jsonFile(name), JSON.stringify(data, null, 2), 'utf8');
 };
 
-const writeJSON = (file, data) => {
-  fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
-};
+// Инициализируем файлы, если пусто
+['news', 'events', 'members', 'pages', 'forms'].forEach((f) => {
+  const p = jsonFile(f);
+  if (!fs.existsSync(p)) writeJSON(f, []);
+});
 
-// ============ AUTH MIDDLEWARE ============
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'dev-token-123';
-
-const requireAuth = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+// ---------- auth-мидлвара ----------
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+function requireAuth(req, res, next) {
+  const h = req.headers.authorization || '';
+  const token = h.startsWith('Bearer ') ? h.slice('Bearer '.length) : '';
+  if (!token || token !== ADMIN_TOKEN) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
-  const token = authHeader.substring(7);
-  if (token !== ADMIN_TOKEN) {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-  next();
-};
+  return next();
+}
 
-// ============ INITIALIZE DB ============
-function initDB() {
-  if (!fs.existsSync(eventsFile)) {
-    writeJSON(eventsFile, [
-      {
-        id: '1',
-        title: 'Welcome Event',
-        date: '2025-01-15',
-        coverUrl: 'https://picsum.photos/800/400',
-        summary: 'Join us for our first event!',
-        content: '<p>Welcome to TU/e Photonics Society!</p>',
-        published: true,
-        latest: true,
-        createdAt: new Date().toISOString(),
-      },
-    ]);
-  }
+// ---------- AUTH ----------
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@local';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 
-  if (!fs.existsSync(newsFile)) {
-    writeJSON(newsFile, [
-      {
-        id: '1',
-        title: 'First News Article',
-        date: new Date().toISOString(),
-        coverUrl: 'https://picsum.photos/800/400',
-        summary: 'Our first news post',
-        content: '<p>Stay tuned for more updates!</p>',
-        published: true,
-        createdAt: new Date().toISOString(),
-      },
-    ]);
-  }
-
-  if (!fs.existsSync(membersFile)) {
-    writeJSON(membersFile, []);
-  }
-
-  if (!fs.existsSync(pastMembersFile)) {
-    writeJSON(pastMembersFile, []);
-  }
-
-  if (!fs.existsSync(pagesFile)) {
-    writeJSON(pagesFile, {
-      home: {
-        heroImage: '/hero.jpg',
-        typedPhrases: [
-          'Join us today and enjoy a free OPTICA subscription!',
-          'Connect with the photonics community at TU/e.',
-          'Workshops, talks, cleanroom tours, and more.',
-        ],
-      },
-      about: {
-        sections: [
-          {
-            id: '1',
-            type: 'text-image',
-            title: 'About Us',
-            text: '<p>We are the Photonics Society at TU/e.</p>',
-            image: 'https://picsum.photos/600/400',
-          },
-        ],
-      },
-      joinUs: {
-        introText: '<p>Become a member today!</p>',
-        formFields: [
-          {
-            id: '1',
-            name: 'name',
-            label: 'Full Name',
-            type: 'text',
-            required: true,
-            placeholder: 'John Doe',
-          },
-          {
-            id: '2',
-            name: 'email',
-            label: 'Email',
-            type: 'email',
-            required: true,
-            placeholder: 'john@example.com',
-          },
-        ],
-      },
+/**
+ * Login: принимает {email,password}, при успехе возвращает {token,user}
+ * фронт ожидает именно такую структуру.
+ */
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body || {};
+  if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+    return res.json({
+      token: ADMIN_TOKEN,
+      user: { id: 'admin', email: ADMIN_EMAIL, name: 'Admin' },
     });
   }
-
-  console.log('✅ Database initialized');
-}
-
-initDB();
-
-// ============ API ROUTES ============
-
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  return res.status(401).json({ error: 'Invalid credentials' });
 });
 
-// ===== EVENTS =====
-app.get('/api/events', (req, res) => {
-  const events = readJSON(eventsFile) || [];
-  const published = events.filter((e) => e.published);
-  res.json(published);
+/** Текущий пользователь по токену */
+app.get('/api/auth/me', requireAuth, (req, res) => {
+  res.json({ id: 'admin', email: ADMIN_EMAIL, name: 'Admin' });
 });
 
-app.get('/api/events/admin', requireAuth, (req, res) => {
-  const events = readJSON(eventsFile) || [];
-  res.json(events);
+// ---------- UPLOADS ----------
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname || '');
+    cb(null, `${uuidv4()}${ext}`);
+  },
 });
+const upload = multer({ storage });
 
-app.get('/api/events/:id', (req, res) => {
-  const events = readJSON(eventsFile) || [];
-  const event = events.find((e) => String(e.id) === String(req.params.id));
-  if (!event) {
-    return res.status(404).json({ error: 'Event not found' });
-  }
-  res.json(event);
-});
-
-app.post('/api/events', requireAuth, (req, res) => {
-  const events = readJSON(eventsFile) || [];
-  const newEvent = {
-    ...req.body,
-    id: String(Date.now()),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  events.push(newEvent);
-  writeJSON(eventsFile, events);
-  res.json(newEvent);
-});
-
-app.put('/api/events/:id', requireAuth, (req, res) => {
-  const events = readJSON(eventsFile) || [];
-  const index = events.findIndex((e) => String(e.id) === String(req.params.id));
-  if (index === -1) {
-    return res.status(404).json({ error: 'Event not found' });
-  }
-  events[index] = {
-    ...events[index],
-    ...req.body,
-    id: events[index].id,
-    updatedAt: new Date().toISOString(),
-  };
-  writeJSON(eventsFile, events);
-  res.json(events[index]);
-});
-
-app.delete('/api/events/:id', requireAuth, (req, res) => {
-  let events = readJSON(eventsFile) || [];
-  events = events.filter((e) => String(e.id) !== String(req.params.id));
-  writeJSON(eventsFile, events);
-  res.json({ success: true });
-});
-
-// ===== NEWS =====
-app.get('/api/news', (req, res) => {
-  const news = readJSON(newsFile) || [];
-  const published = news.filter((n) => n.published);
-  res.json(published);
-});
-
-app.get('/api/news/admin', requireAuth, (req, res) => {
-  const news = readJSON(newsFile) || [];
-  res.json(news);
-});
-
-app.get('/api/news/:id', (req, res) => {
-  const news = readJSON(newsFile) || [];
-  const item = news.find((n) => String(n.id) === String(req.params.id));
-  if (!item) {
-    return res.status(404).json({ error: 'News not found' });
-  }
-  res.json(item);
-});
-
-app.post('/api/news', requireAuth, (req, res) => {
-  const news = readJSON(newsFile) || [];
-  const newItem = {
-    ...req.body,
-    id: String(Date.now()),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  news.push(newItem);
-  writeJSON(newsFile, news);
-  res.json(newItem);
-});
-
-app.put('/api/news/:id', requireAuth, (req, res) => {
-  const news = readJSON(newsFile) || [];
-  const index = news.findIndex((n) => String(n.id) === String(req.params.id));
-  if (index === -1) {
-    return res.status(404).json({ error: 'News not found' });
-  }
-  news[index] = {
-    ...news[index],
-    ...req.body,
-    id: news[index].id,
-    updatedAt: new Date().toISOString(),
-  };
-  writeJSON(newsFile, news);
-  res.json(news[index]);
-});
-
-app.delete('/api/news/:id', requireAuth, (req, res) => {
-  let news = readJSON(newsFile) || [];
-  news = news.filter((n) => String(n.id) !== String(req.params.id));
-  writeJSON(newsFile, news);
-  res.json({ success: true });
-});
-
-// ===== MEMBERS =====
-app.get('/api/members', (req, res) => {
-  const members = readJSON(membersFile) || [];
-  res.json(members);
-});
-
-app.get('/api/members/admin', requireAuth, (req, res) => {
-  const members = readJSON(membersFile) || [];
-  res.json(members);
-});
-
-app.get('/api/members/past', (req, res) => {
-  const pastMembers = readJSON(pastMembersFile) || [];
-  res.json(pastMembers);
-});
-
-app.get('/api/members/past/admin', requireAuth, (req, res) => {
-  const pastMembers = readJSON(pastMembersFile) || [];
-  res.json(pastMembers);
-});
-
-app.post('/api/members', requireAuth, (req, res) => {
-  const members = readJSON(membersFile) || [];
-  const newMember = {
-    ...req.body,
-    id: String(Date.now()),
-    order: members.length,
-    createdAt: new Date().toISOString(),
-  };
-  members.push(newMember);
-  writeJSON(membersFile, members);
-  res.json(newMember);
-});
-
-app.put('/api/members/:id', requireAuth, (req, res) => {
-  const members = readJSON(membersFile) || [];
-  const index = members.findIndex((m) => String(m.id) === String(req.params.id));
-  if (index === -1) {
-    return res.status(404).json({ error: 'Member not found' });
-  }
-  members[index] = {
-    ...members[index],
-    ...req.body,
-    id: members[index].id,
-    updatedAt: new Date().toISOString(),
-  };
-  writeJSON(membersFile, members);
-  res.json(members[index]);
-});
-
-app.delete('/api/members/:id', requireAuth, (req, res) => {
-  let members = readJSON(membersFile) || [];
-  members = members.filter((m) => String(m.id) !== String(req.params.id));
-  writeJSON(membersFile, members);
-  res.json({ success: true });
-});
-
-app.post('/api/members/reorder', requireAuth, (req, res) => {
-  const { ids } = req.body;
-  const members = readJSON(membersFile) || [];
-  const reordered = ids
-    .map((id, index) => {
-      const member = members.find((m) => String(m.id) === String(id));
-      if (member) {
-        return { ...member, order: index };
-      }
-      return null;
-    })
-    .filter(Boolean);
-  writeJSON(membersFile, reordered);
-  res.json(reordered);
-});
-
-app.post('/api/members/:id/move-to-past', requireAuth, (req, res) => {
-  const members = readJSON(membersFile) || [];
-  const pastMembers = readJSON(pastMembersFile) || [];
-  
-  const index = members.findIndex((m) => String(m.id) === String(req.params.id));
-  if (index === -1) {
-    return res.status(404).json({ error: 'Member not found' });
-  }
-  
-  const [member] = members.splice(index, 1);
-  pastMembers.push(member);
-  
-  writeJSON(membersFile, members);
-  writeJSON(pastMembersFile, pastMembers);
-  
-  res.json({ success: true });
-});
-
-app.post('/api/past-members/:id/restore', requireAuth, (req, res) => {
-  const members = readJSON(membersFile) || [];
-  const pastMembers = readJSON(pastMembersFile) || [];
-  
-  const index = pastMembers.findIndex((m) => String(m.id) === String(req.params.id));
-  if (index === -1) {
-    return res.status(404).json({ error: 'Past member not found' });
-  }
-  
-  const [member] = pastMembers.splice(index, 1);
-  member.order = members.length;
-  members.push(member);
-  
-  writeJSON(membersFile, members);
-  writeJSON(pastMembersFile, pastMembers);
-  
-  res.json({ success: true });
-});
-
-app.delete('/api/past-members/:id', requireAuth, (req, res) => {
-  let pastMembers = readJSON(pastMembersFile) || [];
-  pastMembers = pastMembers.filter((m) => String(m.id) !== String(req.params.id));
-  writeJSON(pastMembersFile, pastMembers);
-  res.json({ success: true });
-});
-
-// ===== PAGES =====
-app.get('/api/pages/:page', (req, res) => {
-  const pages = readJSON(pagesFile) || {};
-  const page = pages[req.params.page];
-  if (!page) {
-    return res.status(404).json({ error: 'Page not found' });
-  }
-  res.json(page);
-});
-
-app.put('/api/pages/:page', requireAuth, (req, res) => {
-  const pages = readJSON(pagesFile) || {};
-  pages[req.params.page] = req.body;
-  writeJSON(pagesFile, pages);
-  res.json(req.body);
-});
-
-// ===== UPLOAD =====
+/** Загрузка файла (требуется авторизация) */
 app.post('/api/upload', requireAuth, upload.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No file uploaded' });
-  }
-  const url = `/uploads/${req.file.filename}`;
-  res.json({ url });
+  if (!req.file) return res.status(400).json({ error: 'No file' });
+  // Отдаём публичный URL на этот файл
+  const publicPath = `/uploads/${req.file.filename}`;
+  res.json({ filename: req.file.filename, url: publicPath });
 });
 
-// ===== CONTACT FORM =====
-app.post('/api/contact', (req, res) => {
-  const { name, email, message } = req.body;
-  console.log('Contact form submission:', { name, email, message });
-  // Here you could send email, save to DB, etc.
-  res.json({ success: true, message: 'Message received' });
-});
+// Раздаём статику загруженных файлов
+app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d', immutable: true }));
 
-// ===== JOIN FORM =====
-app.post('/api/join', (req, res) => {
-  console.log('Join form submission:', req.body);
-  // Here you could send email, save to DB, etc.
-  res.json({ success: true, message: 'Application received' });
-});
+// ---------- GENERIC CRUD HELPERS ----------
+/**
+ * Выставим единообразные поля:
+ * id (uuid), createdAt (ISO), updatedAt (ISO)
+ */
+function makeEntityRoutes(entityName, options = {}) {
+  const { idKey = 'id' } = options;
 
-// ============ SERVE FRONTEND ============
-const distPath = path.join(__dirname, '../dist');
-
-if (fs.existsSync(distPath)) {
-  app.use(express.static(distPath));
-  
-  // All other routes return index.html (for React Router)
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
+  // LIST
+  app.get(`/api/${entityName}`, (req, res) => {
+    const items = readJSON(entityName, []);
+    res.json(items);
   });
-  
-  console.log('📦 Serving frontend from:', distPath);
-} else {
-  console.warn('⚠️  dist folder not found. Build frontend first: npm run build');
-  app.get('*', (req, res) => {
-    res.status(404).send('Frontend not built. Run: npm run build');
+
+  // DETAIL
+  app.get(`/api/${entityName}/:id`, (req, res) => {
+    const { id } = req.params;
+    const items = readJSON(entityName, []);
+    const found = items.find((x) => String(x[idKey]) === String(id));
+    if (!found) return res.status(404).json({ error: 'Not found' });
+    res.json(found);
+  });
+
+  // CREATE (admin)
+  app.post(`/api/${entityName}/admin`, requireAuth, (req, res) => {
+    const items = readJSON(entityName, []);
+    const now = new Date().toISOString();
+    const payload = req.body || {};
+    const item = {
+      ...payload,
+      [idKey]: uuidv4(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    items.unshift(item); // свежие — вверх
+    writeJSON(entityName, items);
+    res.status(201).json(item);
+  });
+
+  // UPDATE (admin)
+  app.put(`/api/${entityName}/admin/:id`, requireAuth, (req, res) => {
+    const { id } = req.params;
+    const items = readJSON(entityName, []);
+    const idx = items.findIndex((x) => String(x[idKey]) === String(id));
+    if (idx === -1) return res.status(404).json({ error: 'Not found' });
+    const now = new Date().toISOString();
+    const updated = { ...items[idx], ...req.body, updatedAt: now };
+    items[idx] = updated;
+    writeJSON(entityName, items);
+    res.json(updated);
+  });
+
+  // DELETE (admin)
+  app.delete(`/api/${entityName}/admin/:id`, requireAuth, (req, res) => {
+    const { id } = req.params;
+    const items = readJSON(entityName, []);
+    const idx = items.findIndex((x) => String(x[idKey]) === String(id));
+    if (idx === -1) return res.status(404).json({ error: 'Not found' });
+    const [removed] = items.splice(idx, 1);
+    writeJSON(entityName, items);
+    res.json({ ok: true, removed });
   });
 }
 
-// ============ START SERVER ============
+// ---------- NEWS / EVENTS / MEMBERS ----------
+makeEntityRoutes('news');
+makeEntityRoutes('events');
+makeEntityRoutes('members');
+
+// ---------- PAGES ----------
+// Для pages вместо списка часто нужен доступ по slug.
+// Но оставим общий доступ к списку (см. generic LIST), плюс сделаем GET по slug.
+app.get('/api/pages/slug/:slug', (req, res) => {
+  const { slug } = req.params;
+  const items = readJSON('pages', []);
+  const found = items.find((p) => p.slug === slug);
+  if (!found) return res.status(404).json({ error: 'Not found' });
+  res.json(found);
+});
+
+// Админские CRUD уже покрыты generic-роутами /api/pages/admin...
+
+// ---------- FORMS (email в ivsilan2005@gmail.com) ----------
+/**
+ * POST /api/forms/submit
+ * Принимает произвольные поля формы (например: name, email, message, topic, attachments и т.п.)
+ * Сохраняет в data/forms.json, отправляет email через SMTP (если настроен).
+ */
+const EMAIL_TO = process.env.EMAIL_TO || 'ivsilan2005@gmail.com';
+
+async function sendMailSafe({ subject, html, text }) {
+  // динамический импорт, чтобы сервер не падал без зависимости
+  let nodemailer;
+  try {
+    nodemailer = await import('nodemailer');
+  } catch (e) {
+    console.warn('[mail] nodemailer не установлен, письмо не отправлено.');
+    return { sent: false, error: 'nodemailer_not_installed' };
+  }
+
+  const host = process.env.SMTP_HOST;
+  const port = Number(process.env.SMTP_PORT || 587);
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+
+  if (!host || !user || !pass) {
+    console.warn('[mail] SMTP_* не заданы, письмо не отправлено.');
+    return { sent: false, error: 'smtp_not_configured' };
+  }
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465, // true — если 465
+    auth: { user, pass },
+  });
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"Website Forms" <${user}>`,
+      to: EMAIL_TO,
+      subject,
+      text,
+      html,
+    });
+    return { sent: true, infoId: info.messageId };
+  } catch (error) {
+    console.error('[mail] send error:', error);
+    return { sent: false, error: String(error && error.message) };
+  }
+}
+
+app.post('/api/forms/submit', async (req, res) => {
+  // Собираем данные формы
+  const payload = req.body || {};
+  const now = new Date().toISOString();
+
+  // Сохраним в data/forms.json
+  const forms = readJSON('forms', []);
+  const entry = { id: uuidv4(), createdAt: now, ...payload };
+  forms.unshift(entry);
+  writeJSON('forms', forms);
+
+  // Сформируем письмо
+  const subject = payload.subject || payload.topic || 'Website form submission';
+  const text = [
+    `New form submission at ${now}`,
+    '',
+    ...Object.entries(payload).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`),
+  ].join('\n');
+
+  const html = `
+    <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;">
+      <h2>New form submission</h2>
+      <p><strong>Received at:</strong> ${now}</p>
+      <table border="1" cellspacing="0" cellpadding="6">
+        <tbody>
+          ${Object.entries(payload)
+            .map(
+              ([k, v]) =>
+                `<tr><td><strong>${k}</strong></td><td>${typeof v === 'object' ? `<pre>${JSON.stringify(v, null, 2)}</pre>` : String(v || '')}</td></tr>`
+            )
+            .join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  const result = await sendMailSafe({ subject, text, html });
+
+  res.json({
+    ok: true,
+    savedId: entry.id,
+    email: { to: EMAIL_TO, ...result },
+  });
+});
+
+// ---------- STATIC FRONTEND (Vite build) ----------
+const distPath = path.resolve(ROOT_DIR, '..', 'dist');
+app.use(express.static(distPath, { maxAge: '7d', index: 'index.html' }));
+
+// SPA fallback: любые не-API запросы — на index.html
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/')) return next();
+  res.sendFile(path.join(distPath, 'index.html'));
+});
+
+// ---------- START ----------
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📁 Uploads directory: ${uploadsDir}`);
-  console.log(`🗄️  Database directory: ${dbDir}`);
-  console.log(`🔑 Admin token: ${ADMIN_TOKEN}`);
-  console.log(`\n🌐 Open: http://localhost:${PORT}`);
-  console.log(`🔧 Admin: http://localhost:${PORT}/admin`);
+  console.log(`Server listening on http://0.0.0.0:${PORT}`);
 });
