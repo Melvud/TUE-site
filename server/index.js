@@ -1,7 +1,4 @@
 // server/index.js
-// Запуск: node server/index.js
-// Требуется Node 18+ и "type": "module" в package.json (или замените импорты на require).
-
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
@@ -16,19 +13,21 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DATA_DIR = path.join(__dirname, 'data');          // server/data
-const DB_FILE  = path.join(DATA_DIR, 'db.json');
-
-const UPLOADS_DIR = path.join(__dirname, 'uploads');    // server/uploads
+const DATA_DIR = path.join(__dirname, 'data');
+const DB_FILE = path.join(DATA_DIR, 'db.json');
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
 
 // ────────────── ENV ──────────────
 const PORT = Number(process.env.PORT || 3000);
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 
-const ADMIN_TOKEN    = process.env.ADMIN_TOKEN    || 'admin-secret';
-const ADMIN_EMAIL    = process.env.ADMIN_EMAIL    || 'admin@tue.local';
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'admin-secret';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@tue.local';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
-const ADMIN_NAME     = process.env.ADMIN_NAME     || 'Site Admin';
+const ADMIN_NAME = process.env.ADMIN_NAME || 'Site Admin';
+
+// Email для отправки форм
+const CONTACT_EMAIL = 'ivsilan2005@gmail.com';
 
 // ────────────── HELPERS ──────────────
 async function ensureDir(p) {
@@ -36,13 +35,89 @@ async function ensureDir(p) {
 }
 
 async function exists(p) {
-  try { await fs.access(p); return true; } catch { return false; }
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function initDB() {
   await ensureDir(DATA_DIR);
   if (!(await exists(DB_FILE))) {
-    const init = { events: [], news: [], members: [], pastMembers: [] };
+    const init = {
+      events: [],
+      news: [],
+      members: [],
+      pastMembers: [],
+      pages: {
+        home: {
+          typedPhrases: [
+            'Join us today and enjoy a free OPTICA subscription!',
+            'Connect with the photonics community at TU/e.',
+            'Workshops, talks, cleanroom tours, and more.',
+          ],
+          heroImage: '/hero.jpg',
+        },
+        about: {
+          sections: [
+            {
+              id: '1',
+              type: 'text-image',
+              title: 'Photonics Society Eindhoven',
+              text: '<p>The Photonics Society Eindhoven (PhE) is a student community officially recognized as an Optica (formerly OSA) student chapter in March 2020. We are a group of enthusiastic and determined Ph.D. students committed to the dissemination of optics and photonics (O&P) in the city of Eindhoven.</p><p>Our main goal is to promote enrollment in O&P by creating opportunities for students to perform high-level scientific research in technical areas within O&P.</p>',
+              image: 'https://picsum.photos/seed/phe-group/600/400',
+            },
+            {
+              id: '2',
+              type: 'image-text',
+              title: 'What is an Optica Chapter?',
+              text: '<p>As a student chapter, we benefit from the support of Optica, a non-profit organization founded in 1916. Optica is a leading organization focused on fostering the technical and professional development of over 23,000 members and supports a network of more than 370 student chapters worldwide.</p><p>These local chapters create valuable opportunities for professional development, including activity and travel grants, guest lecture resources, and networking opportunities.</p>',
+              image: 'https://picsum.photos/seed/optica-logo/600/400',
+            },
+          ],
+        },
+        joinUs: {
+          introText:
+            '<h2>Join the Photonics Society Eindhoven (PhE)</h2><p><strong>Quick sign-up:</strong> Use our Telegram bot for one-click registration—fill a short form and we\'ll approve it in 1–2 days. You don\'t need Optica membership to join PhE; you can always add it later for extra benefits. We\'re an Optica Student Chapter but open to all optics enthusiasts. As a member, you\'ll get early/priority access to event registrations. This year we\'re also launching a members-only Telegram space with a random-coffee bot, mentorship program, and our community ecosystem (news, chat, networking) before anywhere else.</p><h3>1) PhE Member (open to all optics enthusiasts)</h3><p>No student status required.<br/>Perks you get:</p><ul><li>Priority access to event registrations</li><li>Invite to our closed Telegram (random-coffee, mentorship, news & networking)</li><li>First to hear about collabs, site visits, and workshops</li></ul><h3>2) Optica Student Member (students & PhDs)</h3><p>If you\'re a student (incl. PhD), we recommend also becoming an Optica (optica.org) student member:</p><ul><li>Cost: $22/year (often reimbursable—ask your supervisor/department)</li><li>After joining Optica, list Photonics Society Eindhoven as your Student Chapter</li></ul><p><strong>Why add Optica student membership?</strong></p><ul><li>Community & networking: global student network, visiting lecturers, mentors</li><li>Funding & travel: eligibility for chapter grants, traveling-lecturer support, scholarships/travel grants, competitions</li><li>Career boost: reduced conference fees, programs, jobs & internships, member resources</li><li>Leadership experience: run events, budgets, partnerships—great for CVs/PhD or industry applications</li><li>Typical activities: traveling lecturers, company/lab visits, outreach, career panels, Student Leadership Conference</li></ul><p><strong>Not a student?</strong><br/>You\'re very welcome at our events without Optica membership.<br/>Note: when events are funded by Optica, priority may go to official Optica student members if required by the grant.</p><h3>How to join</h3><ul><li>Everyone: sign up via our Telegram bot (we\'ll send the closed-channel invite + add you to the priority list)</li><li>Students: get Optica student membership → add Photonics Society Eindhoven as your chapter in your Optica account</li></ul>',
+          formFields: [
+            {
+              id: '1',
+              name: 'name',
+              label: 'Full name',
+              type: 'text',
+              required: true,
+              placeholder: '',
+            },
+            {
+              id: '2',
+              name: 'email',
+              label: 'Email',
+              type: 'email',
+              required: true,
+              placeholder: '',
+            },
+            {
+              id: '3',
+              name: 'level',
+              label: 'Level',
+              type: 'text',
+              required: false,
+              placeholder: 'e.g. Undergraduate',
+            },
+            {
+              id: '4',
+              name: 'department',
+              label: 'Department',
+              type: 'text',
+              required: false,
+              placeholder: '',
+            },
+          ],
+        },
+      },
+    };
     await fs.writeFile(DB_FILE, JSON.stringify(init, null, 2), 'utf8');
   }
 }
@@ -53,12 +128,13 @@ async function readDB() {
     const j = JSON.parse(raw || '{}');
     return {
       events: Array.isArray(j.events) ? j.events : [],
-      news:   Array.isArray(j.news)   ? j.news   : [],
+      news: Array.isArray(j.news) ? j.news : [],
       members: Array.isArray(j.members) ? j.members : [],
       pastMembers: Array.isArray(j.pastMembers) ? j.pastMembers : [],
+      pages: j.pages || {},
     };
   } catch {
-    return { events: [], news: [], members: [], pastMembers: [] };
+    return { events: [], news: [], members: [], pastMembers: [], pages: {} };
   }
 }
 
@@ -90,25 +166,37 @@ function mergeFields(target, source, allowed) {
     }
   }
   if ('published' in target) target.published = !!target.published;
-  if ('latest' in target)    target.latest = !!target.latest;
+  if ('latest' in target) target.latest = !!target.latest;
   return target;
 }
 
 const EVENT_FIELDS = [
-  'title', 'date', 'coverUrl', 'googleFormUrl', 'summary', 'content',
-  'published', 'latest', 'publishAt',
+  'title',
+  'date',
+  'coverUrl',
+  'googleFormUrl',
+  'summary',
+  'content',
+  'published',
+  'latest',
+  'publishAt',
 ];
-const NEWS_FIELDS = [
-  'title', 'coverUrl', 'summary', 'content', 'published', 'publishAt',
-];
+const NEWS_FIELDS = ['title', 'coverUrl', 'summary', 'content', 'published', 'publishAt'];
 
-// Для members
 const MEMBER_FIELDS = [
-  'name', 'role', 'photoUrl', 'email', 'linkedin', 'instagram', 'order',
+  'name',
+  'role',
+  'photoUrl',
+  'email',
+  'linkedin',
+  'instagram',
+  'order',
 ];
 
 function sortMembersByOrder(list) {
-  return (Array.isArray(list) ? list : []).slice().sort((a, b) => (a?.order ?? 0) - (b?.order ?? 0));
+  return (Array.isArray(list) ? list : [])
+    .slice()
+    .sort((a, b) => (a?.order ?? 0) - (b?.order ?? 0));
 }
 
 // ────────────── APP ──────────────
@@ -116,7 +204,6 @@ const app = express();
 app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 
-// Статические файлы: только /uploads/*
 await ensureDir(UPLOADS_DIR);
 app.use('/uploads', express.static(UPLOADS_DIR));
 
@@ -133,7 +220,6 @@ const upload = multer({ storage });
 
 app.post('/api/upload', requireAuth, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file' });
-  // Возвращаем URL именно с /uploads/
   return res.json({ url: `/uploads/${req.file.filename}` });
 });
 
@@ -166,7 +252,6 @@ app.get('/api/events/:id', async (req, res) => {
   res.json(item);
 });
 
-// ADMIN list
 app.get('/api/events/admin', requireAuth, async (_req, res) => {
   const db = await readDB();
   res.json(db.events);
@@ -279,7 +364,6 @@ app.delete('/api/news/:id', requireAuth, async (req, res) => {
 });
 
 // ────────────── MEMBERS ──────────────
-// PUBLIC
 app.get('/api/members', async (_req, res) => {
   const db = await readDB();
   res.json(sortMembersByOrder(db.members));
@@ -289,7 +373,6 @@ app.get('/api/members/past', async (_req, res) => {
   res.json(db.pastMembers);
 });
 
-// ADMIN (чтение)
 app.get('/api/members/admin', requireAuth, async (_req, res) => {
   const db = await readDB();
   res.json(sortMembersByOrder(db.members));
@@ -299,7 +382,6 @@ app.get('/api/members/past/admin', requireAuth, async (_req, res) => {
   res.json(db.pastMembers);
 });
 
-// CREATE
 app.post('/api/members', requireAuth, async (req, res) => {
   const db = await readDB();
   const now = new Date().toISOString();
@@ -319,7 +401,7 @@ app.post('/api/members', requireAuth, async (req, res) => {
     createdAt: now,
     updatedAt: now,
   };
-  const item = mergeFields(base, (req.body || {}), MEMBER_FIELDS);
+  const item = mergeFields(base, req.body || {}, MEMBER_FIELDS);
 
   if (!item.name?.trim() || !item.role?.trim() || !item.photoUrl?.trim()) {
     return res.status(400).json({ error: 'name, role, photoUrl are required' });
@@ -331,7 +413,6 @@ app.post('/api/members', requireAuth, async (req, res) => {
   res.status(201).json(item);
 });
 
-// UPDATE
 app.put('/api/members/:id', requireAuth, async (req, res) => {
   const db = await readDB();
   const id = String(req.params.id);
@@ -340,7 +421,7 @@ app.put('/api/members/:id', requireAuth, async (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'Not found' });
 
   const before = list[idx];
-  const updated = mergeFields({ ...before }, (req.body || {}), MEMBER_FIELDS);
+  const updated = mergeFields({ ...before }, req.body || {}, MEMBER_FIELDS);
   updated.id = before.id;
   updated.updatedAt = new Date().toISOString();
 
@@ -350,7 +431,6 @@ app.put('/api/members/:id', requireAuth, async (req, res) => {
   res.json(updated);
 });
 
-// DELETE (current members)
 app.delete('/api/members/:id', requireAuth, async (req, res) => {
   const db = await readDB();
   const id = String(req.params.id);
@@ -362,7 +442,6 @@ app.delete('/api/members/:id', requireAuth, async (req, res) => {
   res.status(204).end();
 });
 
-// MOVE TO PAST
 app.post('/api/members/:id/move-to-past', requireAuth, async (req, res) => {
   const db = await readDB();
   const id = String(req.params.id);
@@ -376,7 +455,7 @@ app.post('/api/members/:id/move-to-past', requireAuth, async (req, res) => {
 
   const pm = Array.isArray(db.pastMembers) ? db.pastMembers : [];
   pm.push({
-    id: m.id,               // сохраняем тот же id
+    id: m.id,
     name: m.name,
     photoUrl: m.photoUrl,
     createdAt: new Date().toISOString(),
@@ -387,7 +466,6 @@ app.post('/api/members/:id/move-to-past', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-// RESTORE FROM PAST
 app.post('/api/past-members/:id/restore', requireAuth, async (req, res) => {
   const db = await readDB();
   const id = String(req.params.id);
@@ -401,7 +479,6 @@ app.post('/api/past-members/:id/restore', requireAuth, async (req, res) => {
   db.pastMembers = pm;
 
   const list = Array.isArray(db.members) ? db.members : [];
-  // Если по каким-то причинам такой id уже существует в текущих — выдадим новый id
   const idConflict = list.some((m) => String(m.id) === String(restored.id));
   const newId = idConflict ? nextId(list) : restored.id;
 
@@ -409,7 +486,7 @@ app.post('/api/past-members/:id/restore', requireAuth, async (req, res) => {
   list.push({
     id: newId,
     name: restored.name,
-    role: 'Member',     // дефолт, можно потом отредактировать в админке
+    role: 'Member',
     photoUrl: restored.photoUrl,
     email: '',
     linkedin: '',
@@ -424,7 +501,6 @@ app.post('/api/past-members/:id/restore', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-// DELETE PAST
 app.delete('/api/past-members/:id', requireAuth, async (req, res) => {
   const db = await readDB();
   const id = String(req.params.id);
@@ -436,7 +512,6 @@ app.delete('/api/past-members/:id', requireAuth, async (req, res) => {
   res.status(204).end();
 });
 
-// REORDER (members)
 app.post('/api/members/reorder', requireAuth, async (req, res) => {
   const db = await readDB();
   const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : null;
@@ -446,12 +521,69 @@ app.post('/api/members/reorder', requireAuth, async (req, res) => {
   const list = Array.isArray(db.members) ? db.members : [];
   const next = list.map((m) => ({
     ...m,
-    order: orderMap.has(String(m.id)) ? orderMap.get(String(m.id)) : (m.order ?? 0),
+    order: orderMap.has(String(m.id)) ? orderMap.get(String(m.id)) : m.order ?? 0,
     updatedAt: new Date().toISOString(),
   }));
   db.members = sortMembersByOrder(next);
   await writeDB(db);
   res.json({ ok: true });
+});
+
+// ────────────── PAGES ──────────────
+app.get('/api/pages/:pageName', async (req, res) => {
+  const db = await readDB();
+  const page = db.pages?.[req.params.pageName];
+  if (!page) return res.status(404).json({ error: 'Page not found' });
+  res.json(page);
+});
+
+app.put('/api/pages/:pageName', requireAuth, async (req, res) => {
+  const db = await readDB();
+  if (!db.pages) db.pages = {};
+  db.pages[req.params.pageName] = req.body;
+  await writeDB(db);
+  res.json(db.pages[req.params.pageName]);
+});
+
+// ────────────── CONTACT / JOIN FORM (отправка на email) ──────────────
+app.post('/api/contact', async (req, res) => {
+  try {
+    const { name, email, message } = req.body;
+    // В production используйте nodemailer или сервис вроде SendGrid
+    // Здесь простая заглушка - в реальном проекте нужно настроить SMTP
+    console.log('Contact form submission:', { to: CONTACT_EMAIL, from: email, name, message });
+
+    // Для демонстрации - просто логируем
+    // В production добавьте реальную отправку email:
+    /*
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({...});
+    await transporter.sendMail({
+      from: email,
+      to: CONTACT_EMAIL,
+      subject: `Contact form: ${name}`,
+      text: message
+    });
+    */
+
+    res.json({ ok: true, message: 'Form submitted (email logged to console)' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to send' });
+  }
+});
+
+app.post('/api/join', async (req, res) => {
+  try {
+    const formData = req.body;
+    console.log('Join form submission:', { to: CONTACT_EMAIL, formData });
+
+    // В production - отправка email через nodemailer
+    res.json({ ok: true, message: 'Application submitted (logged to console)' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to submit' });
+  }
 });
 
 // ────────────── HEALTH ──────────────
@@ -460,13 +592,10 @@ app.get('/api/health', (_req, res) => {
 });
 
 // ────────────── CLIENT (STATIC) ──────────────
-// ВАЖНО: это единственные добавления для миграции
-// Раздаём собранный фронт из ../dist и включаем SPA-fallback.
 const CLIENT_DIST = path.join(__dirname, '..', 'dist');
 app.use(express.static(CLIENT_DIST));
 
 app.get('*', (req, res) => {
-  // Не перехватываем API и явные файлы из /uploads
   if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
     return res.status(404).json({ error: 'Not found' });
   }
@@ -483,4 +612,5 @@ app.listen(PORT, () => {
   console.log(`DB file: ${DB_FILE}`);
   console.log(`Uploads served at: /uploads/*`);
   console.log(`Admin: ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}`);
+  console.log(`Contact email: ${CONTACT_EMAIL}`);
 });

@@ -1,35 +1,130 @@
 // src/types.ts
+
+// ============ Core Content Types ============
+
 export interface Event {
-    id: string;
-    slug?: string;
-    title: string;
-    date: string; // ISO 8601 (дата ивента)
-    image: string;
-    description: string;
-    content: string; // HTML
-    featured?: boolean;
-    published?: boolean;
-    registrationLink?: string | null;
-    isLatest?: boolean;          // показывать как «главный» на /events
-    publishAt?: string | null;   // ISO (когда становится видимым публично)
-  }
-  
-  export interface News {
-    id: string;
-    slug?: string;
-    title: string;
-    date: string; // ISO 8601 (дата новости)
-    author: string;
-    image: string;
-    snippet: string;
-    content: string; // HTML
-    published?: boolean;
-    publishAt?: string | null;   // ISO для отложенной публикации
-  }
-  
-  export interface AuthUser {
-    id: string;
-    email: string;
-    name?: string;
-  }
-  
+  id: string | number;
+  slug?: string;
+  title: string;
+  date: string; // ISO 8601 или YYYY-MM-DD или YYYY-MM-DD..YYYY-MM-DD для диапазона
+  coverUrl?: string;
+  image?: string; // для обратной совместимости
+  googleFormUrl?: string;
+  summary?: string;
+  description?: string; // для обратной совместимости
+  content: string; // HTML
+  published?: boolean;
+  latest?: boolean; // флаг featured/latest события
+  publishAt?: string | null; // ISO для отложенной публикации
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface News {
+  id: string | number;
+  slug?: string;
+  title: string;
+  date: string; // ISO 8601
+  author?: string;
+  coverUrl?: string;
+  image?: string; // для обратной совместимости
+  summary?: string;
+  snippet?: string; // для обратной совместимости
+  content: string; // HTML
+  published?: boolean;
+  publishAt?: string | null; // ISO для отложенной публикации
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface TeamMember {
+  id?: string | number;
+  name: string;
+  position?: string; // для обратной совместимости
+  role?: string;
+  image?: string; // для обратной совместимости
+  photoUrl?: string;
+  socials?: {
+    linkedin?: string;
+    email?: string;
+    instagram?: string;
+  };
+  linkedin?: string;
+  email?: string;
+  instagram?: string;
+  order?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// ============ Auth Types ============
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name?: string;
+}
+
+// ============ Pages Content Types ============
+
+export interface HomePageContent {
+  typedPhrases: string[];
+  heroImage: string;
+}
+
+export interface AboutSection {
+  id: string;
+  type: 'text-image' | 'image-text';
+  title: string;
+  text: string; // HTML
+  image: string;
+}
+
+export interface AboutPageContent {
+  sections: AboutSection[];
+}
+
+export interface JoinFormField {
+  id: string;
+  name: string;
+  label: string;
+  type: 'text' | 'email' | 'textarea' | 'select';
+  required: boolean;
+  placeholder?: string;
+  options?: string[]; // для select
+}
+
+export interface JoinUsPageContent {
+  introText: string; // HTML
+  formFields: JoinFormField[];
+}
+
+// ============ API Response Types ============
+
+export interface ApiError {
+  error: string;
+  message?: string;
+}
+
+export interface LoginResponse {
+  token: string;
+  user: AuthUser;
+}
+
+export interface UploadResponse {
+  url: string;
+}
+
+// ============ Utility Types ============
+
+export type ContentStatus = 'draft' | 'published' | 'scheduled';
+
+export interface TimestampedContent {
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublishableContent {
+  published: boolean;
+  publishAt?: string | null;
+}

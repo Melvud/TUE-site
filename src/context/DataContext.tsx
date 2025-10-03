@@ -1,10 +1,9 @@
 // src/context/DataContext.tsx
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import type { Event, News, AuthUser } from '../types';
-import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
+import type { Event, News, AuthUser, HomePageContent, AboutPageContent, JoinUsPageContent } from '../types';
+import { apiDelete, apiGet, apiPost, apiPut, apiGetPage, apiUpdatePage } from '../api/client';
 import { toFileUrl, fixUploadsInHtml } from '../api/client';
 
-// Новый простейший тип; если у тебя уже есть Member в types.ts — можно импортнуть оттуда.
 type Member = {
   id: string | number;
   name: string;
@@ -21,6 +20,9 @@ interface DataContextShape {
   news: News[];
   members: Member[];
   pastMembers: Member[];
+  homePageContent: HomePageContent | null;
+  aboutPageContent: AboutPageContent | null;
+  joinUsPageContent: JoinUsPageContent | null;
   loading: boolean;
 
   isAuthenticated: boolean;
@@ -39,13 +41,16 @@ interface DataContextShape {
   updateNews: (id: string, payload: Partial<News>) => Promise<News>;
   deleteNews: (id: string) => Promise<void>;
 
-  // Members
   createMember: (payload: Partial<Member>) => Promise<Member>;
   updateMember: (id: string | number, payload: Partial<Member>) => Promise<Member>;
   deleteMember: (id: string | number) => Promise<void>;
   moveMemberToPast: (id: string | number) => Promise<void>;
   restorePastMember: (id: string | number) => Promise<void>;
   reorderMembers: (ids: Array<string | number>) => Promise<void>;
+
+  updateHomePage: (content: HomePageContent) => Promise<void>;
+  updateAboutPage: (content: AboutPageContent) => Promise<void>;
+  updateJoinUsPage: (content: JoinUsPageContent) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextShape | null>(null);
@@ -54,7 +59,11 @@ const eqId = (a: string | number, b: string | number) => String(a) === String(b)
 
 function usePersistedToken() {
   const [token, setToken] = useState<string | null>(() => {
-    try { return localStorage.getItem('auth_token'); } catch { return null; }
+    try {
+      return localStorage.getItem('auth_token');
+    } catch {
+      return null;
+    }
   });
   useEffect(() => {
     try {
@@ -65,7 +74,6 @@ function usePersistedToken() {
   return { token, setToken } as const;
 }
 
-// Нормализация путей картинок и контента под /uploads/
 function normalizeEvent(e: any): Event {
   const cover = toFileUrl(e?.coverUrl) ?? e?.coverUrl;
   const html = fixUploadsInHtml(e?.content) ?? e?.content;
@@ -88,20 +96,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [news, setNews] = useState<News[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [pastMembers, setPastMembers] = useState<Member[]>([]);
+  const [homePageContent, setHomePageContent] = useState<HomePageContent | null>(null);
+  const [aboutPageContent, setAboutPageContent] = useState<AboutPageContent | null>(null);
+  const [joinUsPageContent, setJoinUsPageContent] = useState<JoinUsPageContent | null>(null);
   const [loading, setLoading] = useState(true);
   const { token, setToken } = usePersistedToken();
   const [user, setUser] = useState<AuthUser | null>(null);
 
   const isAuthenticated = Boolean(token);
 
-  // Админский GET с фолбэком на публичный, если /admin недоступен (404)
   const getWithFallback = async <T,>(adminPath: string, publicPath: string): Promise<T> => {
     if (isAuthenticated && token) {
       try {
         return await apiGet<T>(adminPath, token);
-      } catch {
-        // 404/ошибка — используем публичный
-      }
+      } catch {}
     }
     return await apiGet<T>(publicPath);
   };
@@ -109,11 +117,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const load = async () => {
     setLoading(true);
     try {
-      const [n, e, m, pm] = await Promise.all([
+      const [n, e, m, pm, home, about, joinUs] = await Promise.all([
         getWithFallback<any[]>('/api/news/admin', '/api/news'),
         getWithFallback<any[]>('/api/events/admin', '/api/events'),
         getWithFallback<any[]>('/api/members/admin', '/api/members'),
         getWithFallback<any[]>('/api/members/past/admin', '/api/members/past'),
+        apiGetPage<HomePageContent>('home').catch(() => null),
+        apiGetPage<AboutPageContent>('about').catch(() => null),
+        apiGetPage<JoinUsPageContent>('joinUs').catch(() => null),
       ]);
 
       const nn = (Array.isArray(n) ? n : [])
@@ -137,20 +148,31 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setEvents(ee);
       setMembers(mm);
       setPastMembers(ppm);
+      setHomePageContent(home);
+      setAboutPageContent(about);
+      setJoinUsPageContent(joinUs);
     } catch {
       setNews([]);
       setEvents([]);
       setMembers([]);
       setPastMembers([]);
+      setHomePageContent(null);
+      setAboutPageContent(null);
+      setJoinUsPageContent(null);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { void load(); }, [isAuthenticated]);
+  useEffect(() => {
+    void load();
+  }, [isAuthenticated]);
 
   const login = async (email: string, password: string) => {
-    const resp = await apiPost<{ token: string; user: AuthUser }>('/api/auth/login', { email, password });
+    const resp = await apiPost<{ token: string; user: AuthUser }>('/api/auth/login', {
+      email,
+      password,
+    });
     if (!resp || !resp.token) throw new Error('Login failed');
     setToken(resp.token);
     setUser(resp.user);
@@ -169,7 +191,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setEvents((s) => {
       let next = [normalized, ...s];
       if ((normalized as any).latest) {
-        next = next.map((e) => (eqId((e as any).id, (normalized as any).id) ? normalized : { ...(e as any), latest: false as any }));
+        next = next.map((e) =>
+          eqId((e as any).id, (normalized as any).id)
+            ? normalized
+            : { ...(e as any), latest: false as any }
+        );
       }
       return next;
     });
@@ -182,7 +208,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setEvents((s) => {
       let next = s.map((e) => (eqId((e as any).id, id) ? normalized : e));
       if ((normalized as any).latest) {
-        next = next.map((e) => (eqId((e as any).id, id) ? normalized : { ...(e as any), latest: false as any }));
+        next = next.map((e) =>
+          eqId((e as any).id, id) ? normalized : { ...(e as any), latest: false as any }
+        );
       }
       return next;
     });
@@ -213,17 +241,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setNews((s) => s.filter((n) => !eqId((n as any).id, id)));
   };
 
-  // ---- Members ----
   const createMember = async (payload: Partial<Member>) => {
     const created = await apiPost<Member>('/api/members', payload, token || undefined);
     const normalized = normalizeMember(created);
-    setMembers((s) => [...s, normalized].sort((a: any, b: any) => (a?.order ?? 0) - (b?.order ?? 0)));
+    setMembers((s) =>
+      [...s, normalized].sort((a: any, b: any) => (a?.order ?? 0) - (b?.order ?? 0))
+    );
     return normalized;
   };
   const updateMember = async (id: string | number, payload: Partial<Member>) => {
     const updated = await apiPut<Member>(`/api/members/${id}`, payload, token || undefined);
     const normalized = normalizeMember(updated);
-    setMembers((s) => s.map((m) => (eqId(m.id as any, id as any) ? normalized : m)).sort((a: any, b: any) => (a?.order ?? 0) - (b?.order ?? 0)));
+    setMembers((s) =>
+      s
+        .map((m) => (eqId(m.id as any, id as any) ? normalized : m))
+        .sort((a: any, b: any) => (a?.order ?? 0) - (b?.order ?? 0))
+    );
     return normalized;
   };
   const deleteMember = async (id: string | number) => {
@@ -243,16 +276,66 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await load();
   };
 
+  const updateHomePage = async (content: HomePageContent) => {
+    const updated = await apiUpdatePage('home', content, token || undefined);
+    setHomePageContent(updated);
+  };
+
+  const updateAboutPage = async (content: AboutPageContent) => {
+    const updated = await apiUpdatePage('about', content, token || undefined);
+    setAboutPageContent(updated);
+  };
+
+  const updateJoinUsPage = async (content: JoinUsPageContent) => {
+    const updated = await apiUpdatePage('joinUs', content, token || undefined);
+    setJoinUsPageContent(updated);
+  };
+
   const value = useMemo<DataContextShape>(
     () => ({
-      events, news, members, pastMembers, loading,
-      isAuthenticated, token, user, login, logout,
+      events,
+      news,
+      members,
+      pastMembers,
+      homePageContent,
+      aboutPageContent,
+      joinUsPageContent,
+      loading,
+      isAuthenticated,
+      token,
+      user,
+      login,
+      logout,
       refresh: load,
-      createEvent, updateEvent, deleteEvent,
-      createNews, updateNews, deleteNews,
-      createMember, updateMember, deleteMember, moveMemberToPast, restorePastMember, reorderMembers,
+      createEvent,
+      updateEvent,
+      deleteEvent,
+      createNews,
+      updateNews,
+      deleteNews,
+      createMember,
+      updateMember,
+      deleteMember,
+      moveMemberToPast,
+      restorePastMember,
+      reorderMembers,
+      updateHomePage,
+      updateAboutPage,
+      updateJoinUsPage,
     }),
-    [events, news, members, pastMembers, loading, isAuthenticated, token, user]
+    [
+      events,
+      news,
+      members,
+      pastMembers,
+      homePageContent,
+      aboutPageContent,
+      joinUsPageContent,
+      loading,
+      isAuthenticated,
+      token,
+      user,
+    ]
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
