@@ -1,29 +1,11 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { postgresAdapter } from '@payloadcms/db-postgres';
-import { cloudStorage } from '@payloadcms/plugin-cloud-storage';
-import { S3Client } from '@aws-sdk/client-s3';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ==== S3 / R2 client (опционально, но рекомендуемо на Render) ====
-const s3Client = (process.env.S3_BUCKET
-  ? new S3Client({
-      region: process.env.S3_REGION || 'auto',
-      endpoint: process.env.S3_ENDPOINT || undefined, // для R2: https://<accountid>.r2.cloudflarestorage.com
-      forcePathStyle: process.env.S3_FORCE_PATH_STYLE === 'true',
-      credentials:
-        process.env.S3_ACCESS_KEY_ID && process.env.S3_SECRET_ACCESS_KEY
-          ? {
-              accessKeyId: process.env.S3_ACCESS_KEY_ID,
-              secretAccessKey: process.env.S3_SECRET_ACCESS_KEY, // <— исправлено имя переменной
-            }
-          : undefined,
-    })
-  : null);
-
-// ==== Roles ====
+// ==== Роли ====
 const ROLES = ['viewer', 'editor', 'admin'];
 const isAdmin = ({ req }) => req.user?.role === 'admin';
 const isEditorOrAdmin = ({ req }) => ['editor', 'admin'].includes(req.user?.role);
@@ -71,7 +53,7 @@ export default {
       ],
     },
 
-    // ===== Media (upload; с S3/R2 при наличии env) =====
+    // ===== Media (upload; локально без плагина S3) =====
     {
       slug: 'media',
       labels: { singular: 'Media', plural: 'Media' },
@@ -390,25 +372,8 @@ export default {
     },
   ],
 
-  // Плагин облачного хранилища для media (включится только если есть S3_BUCKET)
-  plugins: [
-    cloudStorage({
-      collections: {
-        media: s3Client
-          ? {
-              adapter: 's3',
-              s3: {
-                bucket: process.env.S3_BUCKET,
-                prefix: process.env.S3_PREFIX || 'uploads',
-                client: s3Client,
-                acl: 'public-read',
-              },
-            }
-          : undefined,
-      },
-      enabled: Boolean(process.env.S3_BUCKET),
-    }),
-  ],
+  // Без plugins — плагин хранилища отключён
+  plugins: [],
 
   typescript: { outputFile: path.resolve(__dirname, './payload-types.ts') },
   graphQL: { disable: false },
