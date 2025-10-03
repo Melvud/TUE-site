@@ -4,22 +4,16 @@ import config from '@payload-config'
 import { RootLayout, handleServerFunctions } from '@payloadcms/next/layouts'
 import { importMap } from './admin/importMap'
 
-export const metadata = {
-  title: 'Admin',
-}
+export const metadata = { title: 'Admin' }
 
 export default function PayloadLayout({ children }: { children: ReactNode }) {
-  const serverFunction = async (args: any) => {
+  const serverFunction = async (args: unknown) => {
     'use server'
-    return handleServerFunctions({ ...args, config, importMap })
+    return handleServerFunctions({ ...(args as any), config, importMap })
   }
 
   return (
-    <RootLayout
-      config={config}
-      importMap={importMap}
-      serverFunction={serverFunction}
-    >
+    <RootLayout config={config} importMap={importMap} serverFunction={serverFunction}>
       {children}
     </RootLayout>
   )
