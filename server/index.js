@@ -38,14 +38,13 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
 
 (async () => {
   try {
+    const jsPath  = path.resolve(__dirname, 'payload.config.js');
     const mjsPath = path.resolve(__dirname, 'payload.config.mjs');
     const tsPath  = path.resolve(__dirname, 'payload.config.ts');
-    const configPath = fs.existsSync(mjsPath) ? mjsPath : tsPath;
 
-    console.log('➡️  Loading Payload config from:', configPath);
-    if (!fs.existsSync(configPath)) {
-      throw new Error('payload.config.mjs/ts missing in /server');
-    }
+    const configPath = [jsPath, mjsPath, tsPath].find(p => fs.existsSync(p));
+    console.log('➡️  Loading Payload config from:', configPath || '(not found)');
+    if (!configPath) throw new Error('payload.config.js/mjs/ts missing in /server');
 
     const rawDbUrl = process.env.DATABASE_URL || '';
     try {
@@ -57,6 +56,7 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
 
     const payloadMod = await import('payload');
     const payload = payloadMod.default ?? payloadMod;
+
     const cfgMod = await import(configPath + `?t=${Date.now()}`);
     const payloadConfig = cfgMod.default ?? cfgMod;
 
@@ -73,7 +73,7 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
       onInit: async (payloadInstance) => {
         console.log('✅ Payload CMS initialized');
 
-        // Seed admin
+        // Seed admin (по желанию через переменные окружения)
         const email = process.env.PAYLOAD_SEED_ADMIN_EMAIL;
         const pass = process.env.PAYLOAD_SEED_ADMIN_PASSWORD;
         if (email && pass) {
@@ -86,12 +86,7 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
             if (!docs?.length) {
               await payloadInstance.create({
                 collection: 'users',
-                data: {
-                  email,
-                  password: pass,
-                  name: 'Admin',
-                  role: 'admin'
-                },
+                data: { email, password: pass, name: 'Admin', role: 'admin' },
               });
               console.log(`👤 Seed admin created: ${email}`);
             } else {
@@ -111,30 +106,20 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
       console.warn('⚠️  dist folder not found');
     }
 
+    // статика для фронта (кроме /api и /admin)
     app.use((req, res, next) => {
-      if (req.path.startsWith('/api') || req.path.startsWith('/admin')) {
-        return next();
-      }
-      express.static(distPath, {
-        index: false,
-        maxAge: '1d',
-      })(req, res, next);
+      if (req.path.startsWith('/api') || req.path.startsWith('/admin')) return next();
+      express.static(distPath, { index: false, maxAge: '1d' })(req, res, next);
     });
 
     app.get('*', (req, res, next) => {
-      if (req.path.startsWith('/api') || req.path.startsWith('/admin')) {
-        return next();
-      }
-
+      if (req.path.startsWith('/api') || req.path.startsWith('/admin')) return next();
       const indexPath = path.join(distPath, 'index.html');
-      if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-      } else {
-        res.status(404).send('Frontend not built');
-      }
+      if (fs.existsSync(indexPath)) res.sendFile(indexPath);
+      else res.status(404).send('Frontend not built');
     });
 
-    const PORT = process.env.PORT || 3000;
+    const PORT = process.env.PORT || 3000; // Render прокидывает PORT, см. доки
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`\n🚀 Server: http://0.0.0.0:${PORT}`);
       console.log(`📍 Admin: /admin`);
