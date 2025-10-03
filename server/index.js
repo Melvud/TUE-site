@@ -31,19 +31,13 @@ const storage = multer.diskStorage({
   filename: (_req, file, cb) => cb(null, `${uuidv4()}${path.extname(file.originalname || '')}`),
 });
 const upload = multer({ storage });
-app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d', immutable: true }));
-app.post('/api/upload-local', upload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file' });
-  res.json({ url: `/uploads/${req.file.filename}` });
-});
 
-// Служебный роут для проверки здоровья
+// Служебные роуты ПЕРЕД Payload
 app.get('/health', (_req, res) => res.status(200).send('ok'));
 
 // Инициализация Payload и настройка роутинга
 (async () => {
   try {
-    // Выбираем .mjs‑конфиг для рантайма; при его отсутствии fallback на .js
     const mjsPath = path.resolve(__dirname, 'payload.config.mjs');
     const jsPath  = path.resolve(__dirname, 'payload.config.js');
     const configPath = fs.existsSync(mjsPath) ? mjsPath : jsPath;
@@ -51,31 +45,31 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
 
     console.log('➡️  Loading Payload config from:', configPath);
 
-    // Динамический импорт Payload (работает как с CJS, так и с ESM)
     const payloadMod = await import('payload');
     const payload = payloadMod.default ?? payloadMod;
 
-    // Загружаем конфиг (поддерживает .mjs и .js)
     const cfgMod = await import(configPath + `?t=${Date.now()}`);
     const payloadConfig = cfgMod.default ?? cfgMod;
 
     console.log('🔧 Initializing Payload CMS...');
-    await payload.init({
+    
+    // 🔥 КРИТИЧНО: Payload должен инициализироваться БЕЗ express: app
+    // Мы вручную смонтируем роуты после инициализации
+    const payloadInstance = await payload.init({
       secret: process.env.PAYLOAD_SECRET || 'dev-secret',
-      express: app,
       config: payloadConfig,
-      onInit: async (payloadInstance) => {
+      onInit: async (instance) => {
         console.log('✅ Payload CMS initialized');
 
-        // Создание админа при первом старте
+        // Создание админа
         const email = process.env.PAYLOAD_SEED_ADMIN_EMAIL;
         const pass = process.env.PAYLOAD_SEED_ADMIN_PASSWORD;
         
         if (email && pass) {
           try {
-            // Сначала удаляем временного админа из SQL (если есть)
+            // Удаляем временного админа из SQL (если есть)
             try {
-              await payloadInstance.delete({
+              await instance.delete({
                 collection: 'users',
                 where: {
                   email: { equals: email },
@@ -84,19 +78,18 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
               });
               console.log('🗑️  Removed temporary admin from SQL');
             } catch (e) {
-              // Игнорируем если не найден
+              // Игнорируем
             }
 
-            // Проверяем существование реального админа
-            const { docs } = await payloadInstance.find({
+            // Проверяем существование админа
+            const { docs } = await instance.find({
               collection: 'users',
               where: { email: { equals: email } },
               limit: 1,
             });
             
             if (!docs?.length) {
-              // Создаём админа с правильным хешем пароля
-              await payloadInstance.create({
+              await instance.create({
                 collection: 'users',
                 data: { 
                   email, 
@@ -106,7 +99,6 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
                 },
               });
               console.log(`👤 Seed admin created: ${email}`);
-              console.log(`🔑 Password: ${pass}`);
             } else {
               console.log(`👤 Admin already exists: ${email}`);
             }
@@ -117,40 +109,52 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
       },
     });
 
-    console.log('✅ Payload routes mounted');
+    // 🔥 ВРУЧНУЮ монтируем Payload роуты ПЕРВЫМИ
+    app.use(payloadInstance.express);
+    console.log('✅ Payload routes mounted manually');
 
-    // Путь к собранному фронтенду (Vite)
+    // Upload endpoint после Payload
+    app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d', immutable: true }));
+    app.post('/api/upload-local', upload.single('file'), (req, res) => {
+      if (!req.file) return res.status(400).json({ error: 'No file' });
+      res.json({ url: `/uploads/${req.file.filename}` });
+    });
+
+    // Путь к собранному фронтенду
     const distPath = path.resolve(projectRoot, 'dist');
 
-    // Отдаём статику только для путей, которые не начинаются с /api или /admin
+    // 🔥 ВАЖНО: SPA fallback только для НЕ-API и НЕ-ADMIN путей
     app.use((req, res, next) => {
       const url = req.path;
+      
+      // Если это API или Admin - пропускаем (уже обработано Payload)
       if (url.startsWith('/api') || url.startsWith('/admin')) {
         return next();
       }
-      express.static(distPath, { index: false, maxAge: '1d' })(req, res, next);
-    });
-
-    // SPA‑fallback: для любого другого пути возвращаем index.html
-    app.get('*', (req, res, next) => {
-      const url = req.path;
-      if (url.startsWith('/api') || url.startsWith('/admin')) {
-        return next();
+      
+      // Пытаемся отдать статику из dist
+      const filePath = path.join(distPath, url);
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        return res.sendFile(filePath);
       }
+      
+      // Если файл не найден - отдаём index.html (SPA fallback)
       const indexFile = path.join(distPath, 'index.html');
       if (fs.existsSync(indexFile)) {
-        res.sendFile(indexFile);
-      } else {
-        res.status(404).send('Frontend not built');
+        return res.sendFile(indexFile);
       }
+      
+      // Если даже index.html нет
+      res.status(404).send('Frontend not built');
     });
 
-    // Запуск сервера на PORT из окружения (Render задаёт PORT автоматически)
+    // Запуск сервера
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server: http://0.0.0.0:${PORT}`);
-      console.log(`📍 Admin: /admin`);
-      console.log(`📍 API: /api`);
+      console.log(`📍 Admin: http://0.0.0.0:${PORT}/admin`);
+      console.log(`📍 API: http://0.0.0.0:${PORT}/api`);
+      console.log(`📍 Health: http://0.0.0.0:${PORT}/health`);
     });
 
   } catch (err) {
