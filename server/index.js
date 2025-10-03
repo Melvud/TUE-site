@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 /**
- * Single-server: Express + Payload CMS (ESM через динамический import) + Vite static.
+ * Express + Payload CMS (ESM-конфиг .mjs) + Vite static.
  * Админка только Payload на /admin. SPA не перехватывает /admin.
  */
 
@@ -14,14 +14,15 @@ const { v4: uuidv4 } = require('uuid');
 
 dotenv.config();
 
-process.env.PAYLOAD_CONFIG_PATH = path.resolve(__dirname, 'payload.config.js');
+// Указываем Payload на ESM-конфиг
+process.env.PAYLOAD_CONFIG_PATH = path.resolve(__dirname, 'payload.config.mjs');
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Локальные загрузки (вспомогательное; media лучше хранить в S3/R2 через Payload)
+// Локальные загрузки (вспомогательное; для продакшена используйте S3/R2 через Payload)
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
