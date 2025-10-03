@@ -14,6 +14,10 @@ const { v4: uuidv4 } = require('uuid');
 
 dotenv.config();
 
+const projectRoot = path.resolve(__dirname, '..'); // ← корень репозитория (над /server)
+process.chdir(projectRoot);
+console.log('📁 CWD set to:', process.cwd());
+
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
