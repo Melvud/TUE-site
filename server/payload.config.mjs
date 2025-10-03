@@ -1,29 +1,30 @@
+// server/payload.config.mjs
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { buildConfig } from 'payload';
 import { postgresAdapter } from '@payloadcms/db-postgres';
 import { lexicalEditor } from '@payloadcms/richtext-lexical';
-import { buildConfig } from 'payload';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ✅ Убираем 'as const' - это проблема
+// никаких TS-типов здесь!
 const ROLES = ['viewer', 'editor', 'admin'];
 
-// ✅ Добавляем явную типизацию для функций
-const isAdmin = ({ req }: { req: any }) => req.user?.role === 'admin';
-const isEditorOrAdmin = ({ req }: { req: any }) => ['editor', 'admin'].includes(req.user?.role);
+const isAdmin = ({ req }) => req?.user?.role === 'admin';
+const isEditorOrAdmin = ({ req }) => {
+  const role = req?.user?.role;
+  return role === 'editor' || role === 'admin';
+};
 
 export default buildConfig({
   secret: process.env.PAYLOAD_SECRET || 'dev-secret',
   serverURL: process.env.SERVER_URL || 'http://localhost:3000',
   telemetry: false,
 
-  admin: {
-    user: 'users',
-    disable: false,
-  },
+  admin: { user: 'users', disable: false },
 
+  // полноценный редактор для админки
   editor: lexicalEditor({
     features: ({ defaultFeatures }) => defaultFeatures,
   }),
@@ -31,34 +32,26 @@ export default buildConfig({
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_SSL === 'true' 
-        ? { rejectUnauthorized: false } 
-        : undefined,
+      ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
     },
     migrationDir: path.resolve(__dirname, 'migrations'),
   }),
 
-  rateLimit: { 
-    window: 60 * 1000, 
-    max: 600,
-    trustProxy: true,
-  },
+  rateLimit: { window: 60 * 1000, max: 600, trustProxy: true },
 
   collections: [
+    // Users
     {
       slug: 'users',
       auth: {
         useAPIKey: false,
         tokenExpiration: 7200,
-        cookies: { 
-          sameSite: 'lax', 
+        cookies: {
+          sameSite: 'lax',
           secure: process.env.NODE_ENV === 'production',
         },
       },
-      admin: { 
-        useAsTitle: 'email',
-        defaultColumns: ['email', 'name', 'role'],
-      },
+      admin: { useAsTitle: 'email', defaultColumns: ['email', 'name', 'role'] },
       access: {
         read: isEditorOrAdmin,
         create: isAdmin,
@@ -77,6 +70,7 @@ export default buildConfig({
       ],
     },
 
+    // Media
     {
       slug: 'media',
       labels: { singular: 'Media', plural: 'Media' },
@@ -97,6 +91,7 @@ export default buildConfig({
       ],
     },
 
+    // Events — с richText
     {
       slug: 'events',
       labels: { singular: 'Event', plural: 'Events' },
@@ -113,10 +108,11 @@ export default buildConfig({
       },
       fields: [
         { name: 'title', type: 'text', required: true },
+        // у вас это поле хранится строкой
         { name: 'date', type: 'text', required: true },
         { name: 'googleFormUrl', type: 'text' },
         { name: 'summary', type: 'textarea' },
-        { name: 'content', type: 'richText' },
+        { name: 'content', type: 'richText' }, // полноценный редактор
         { name: 'published', type: 'checkbox', defaultValue: false },
         { name: 'latest', type: 'checkbox', defaultValue: false },
         { name: 'publishAt', type: 'date' },
@@ -124,6 +120,7 @@ export default buildConfig({
       ],
     },
 
+    // News — с richText
     {
       slug: 'news',
       labels: { singular: 'News', plural: 'News' },
@@ -143,20 +140,18 @@ export default buildConfig({
         { name: 'date', type: 'date', required: true },
         { name: 'author', type: 'text' },
         { name: 'summary', type: 'textarea' },
-        { name: 'content', type: 'richText' },
+        { name: 'content', type: 'richText' }, // полноценный редактор
         { name: 'published', type: 'checkbox', defaultValue: false },
         { name: 'publishAt', type: 'date' },
         { name: 'cover', type: 'upload', relationTo: 'media' },
       ],
     },
 
+    // Members
     {
       slug: 'members',
       labels: { singular: 'Member', plural: 'Members' },
-      admin: { 
-        useAsTitle: 'name', 
-        defaultColumns: ['name', 'role', 'order'] 
-      },
+      admin: { useAsTitle: 'name', defaultColumns: ['name', 'role', 'order'] },
       access: {
         read: () => true,
         create: isEditorOrAdmin,
@@ -174,6 +169,7 @@ export default buildConfig({
       ],
     },
 
+    // MembersPast
     {
       slug: 'membersPast',
       labels: { singular: 'Past Member', plural: 'Past Members' },
@@ -196,6 +192,7 @@ export default buildConfig({
       ],
     },
 
+    // Join submissions
     {
       slug: 'joinSubmissions',
       labels: { singular: 'Join Submission', plural: 'Join Submissions' },
@@ -206,62 +203,44 @@ export default buildConfig({
         update: isAdmin,
         delete: isAdmin,
       },
-      fields: [
-        { name: 'payload', type: 'json', required: true },
-      ],
+      fields: [{ name: 'payload', type: 'json', required: true }],
       hooks: {
         afterChange: [
-          async ({ doc, operation }: { doc: any; operation: string }) => {
+          async ({ doc, operation }) => {
             if (operation !== 'create') return;
-            
             try {
-              const nodemailer = await import('nodemailer');
+              const nm = await import('nodemailer');
+              const nodemailer = nm.default || nm;
               const host = process.env.SMTP_HOST;
               const port = Number(process.env.SMTP_PORT || 587);
               const user = process.env.SMTP_USER;
               const pass = process.env.SMTP_PASS;
               const to = process.env.EMAIL_TO || 'ivsilan2005@gmail.com';
-              
               if (!host || !user || !pass) {
                 console.warn('📧 SMTP not configured');
                 return;
               }
-
               const transporter = nodemailer.createTransport({
-                host,
-                port,
-                secure: port === 465,
-                auth: { user, pass },
+                host, port, secure: port === 465, auth: { user, pass },
               });
-
-              const data = doc?.payload || {};
-              const rows = Object.entries(data)
-                .map(([k, v]) =>
-                  `<tr><td><strong>${k}</strong></td><td>${
-                    typeof v === 'object' 
-                      ? `<pre>${JSON.stringify(v, null, 2)}</pre>` 
-                      : String(v || '')
-                  }</td></tr>`
-                )
-                .join('');
-
+              const data = (doc && doc.payload) || {};
+              const rows = Object.entries(data).map(
+                ([k, v]) => `<tr><td><strong>${k}</strong></td><td>${
+                  typeof v === 'object' ? `<pre>${JSON.stringify(v, null, 2)}</pre>` : String(v ?? '')
+                }</td></tr>`
+              ).join('');
               await transporter.sendMail({
                 from: `"PhE Website" <${user}>`,
                 to,
-                subject: data.subject || 'Join form',
-                html: `
-                  <div style="font-family:system-ui,sans-serif">
-                    <h2>Join Form Submission</h2>
-                    <table border="1" cellspacing="0" cellpadding="6">
-                      ${rows}
-                    </table>
-                  </div>
-                `,
+                subject: (data && data.subject) || 'Join form',
+                html: `<div style="font-family:system-ui,sans-serif">
+                         <h2>Join Form Submission</h2>
+                         <table border="1" cellspacing="0" cellpadding="6">${rows}</table>
+                       </div>`,
               });
-              
               console.log('📧 Email sent');
-            } catch (e: any) {
-              console.error('📧 Email failed:', e.message);
+            } catch (e) {
+              console.error('📧 Email failed:', (e && e.message) || String(e));
             }
           },
         ],
@@ -271,11 +250,10 @@ export default buildConfig({
 
   plugins: [],
 
-  typescript: { 
-    outputFile: path.resolve(__dirname, './payload-types.ts') 
+  typescript: {
+    // только вывод типов при локальной разработке, не влияет на рантайм
+    outputFile: path.resolve(__dirname, './payload-types.ts'),
   },
-  
-  graphQL: { 
-    disable: false 
-  },
+
+  graphQL: { disable: false },
 });
