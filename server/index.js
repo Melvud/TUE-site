@@ -4,111 +4,144 @@ const fs = require('fs');
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const multer = require('multer');
+const { v4: uuidv4 } = require('uuid');
 
 dotenv.config();
 
+const app = express();
+app.disable('x-powered-by');
+app.set('trust proxy', true);
+
+// Рабочая директория — корень проекта (../ от папки server)
 const projectRoot = path.resolve(__dirname, '..');
 process.chdir(projectRoot);
 console.log('📁 CWD set to:', process.cwd());
 
-// 🔥 СОЗДАЁМ ДВА ОТДЕЛЬНЫХ EXPRESS APP
-const payloadApp = express(); // Для Payload (/api, /admin)
-const mainApp = express();    // Главный app
+// Базовая конфигурация Express
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-mainApp.disable('x-powered-by');
-mainApp.set('trust proxy', true);
-mainApp.use(cors());
+// Локальная загрузка файлов
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+  filename: (_req, file, cb) => cb(null, `${uuidv4()}${path.extname(file.originalname || '')}`),
+});
+const upload = multer({ storage });
+app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d', immutable: true }));
 
+// Health check ПЕРЕД Payload
+app.get('/health', (_req, res) => res.status(200).send('ok'));
+
+// Инициализация Payload и настройка роутинга
 (async () => {
   try {
-    // === 1. Инициализируем Payload в отдельном app ===
+    // Выбираем .mjs‑конфиг для рантайма; при его отсутствии fallback на .js
     const mjsPath = path.resolve(__dirname, 'payload.config.mjs');
     const jsPath  = path.resolve(__dirname, 'payload.config.js');
     const configPath = fs.existsSync(mjsPath) ? mjsPath : jsPath;
+    if (!configPath) throw new Error('No Payload config found in /server');
 
     console.log('➡️  Loading Payload config from:', configPath);
 
+    // Динамический импорт Payload (работает как с CJS, так и с ESM)
     const payloadMod = await import('payload');
     const payload = payloadMod.default ?? payloadMod;
 
+    // Загружаем конфиг (поддерживает .mjs и .js)
     const cfgMod = await import(configPath + `?t=${Date.now()}`);
     const payloadConfig = cfgMod.default ?? cfgMod;
 
     console.log('🔧 Initializing Payload CMS...');
     
+    // 🔥 КЛЮЧЕВОЙ МОМЕНТ: Payload автоматически монтируется в app
     await payload.init({
       secret: process.env.PAYLOAD_SECRET || 'dev-secret',
-      express: payloadApp, // 🔥 Используем отдельный app!
+      express: app,
       config: payloadConfig,
-      onInit: async (instance) => {
+      onInit: async (payloadInstance) => {
         console.log('✅ Payload CMS initialized');
 
+        // Создание админа при первом старте
         const email = process.env.PAYLOAD_SEED_ADMIN_EMAIL;
         const pass = process.env.PAYLOAD_SEED_ADMIN_PASSWORD;
         
         if (email && pass) {
           try {
+            // Удаляем временного админа из SQL (если есть)
             try {
-              await instance.delete({
+              await payloadInstance.delete({
                 collection: 'users',
                 where: {
                   email: { equals: email },
                   hash: { equals: '$2a$10$dummyhashfornow' },
                 },
               });
-              console.log('🗑️  Removed temporary admin');
-            } catch (e) {}
+              console.log('🗑️  Removed temporary admin from SQL');
+            } catch (e) {
+              // Игнорируем если не найден
+            }
 
-            const { docs } = await instance.find({
+            // Проверяем существование реального админа
+            const { docs } = await payloadInstance.find({
               collection: 'users',
               where: { email: { equals: email } },
               limit: 1,
             });
             
             if (!docs?.length) {
-              await instance.create({
+              // Создаём админа с правильным хешем пароля
+              await payloadInstance.create({
                 collection: 'users',
-                data: { email, password: pass, name: 'Admin', role: 'admin' },
+                data: { 
+                  email, 
+                  password: pass, 
+                  name: 'Admin', 
+                  role: 'admin' 
+                },
               });
-              console.log(`👤 Admin created: ${email}`);
+              console.log(`👤 Seed admin created: ${email}`);
             } else {
-              console.log(`👤 Admin exists: ${email}`);
+              console.log(`👤 Admin already exists: ${email}`);
             }
           } catch (err) {
-            console.error('❌ Admin seed failed:', err.message);
+            console.error('❌ Seed admin failed:', err.message);
           }
         }
       },
     });
 
-    console.log('✅ Payload app ready');
+    console.log('✅ Payload routes mounted at /api and /admin');
 
-    // === 2. Монтируем Payload app в главный ===
-    // Все запросы к /api и /admin идут в payloadApp
-    mainApp.use('/api', payloadApp);
-    mainApp.use('/admin', payloadApp);
-    console.log('✅ Mounted Payload at /api and /admin');
+    // Upload endpoint (если нужен дополнительно)
+    app.post('/api/upload-local', upload.single('file'), (req, res) => {
+      if (!req.file) return res.status(400).json({ error: 'No file' });
+      res.json({ url: `/uploads/${req.file.filename}` });
+    });
 
-    // === 3. Uploads ===
-    const UPLOADS_DIR = path.join(__dirname, 'uploads');
-    if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-    mainApp.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d' }));
-
-    // === 4. Health check ===
-    mainApp.get('/health', (_req, res) => res.send('ok'));
-
-    // === 5. Фронтенд (SPA) ===
+    // Путь к собранному фронтенду (Vite)
     const distPath = path.resolve(projectRoot, 'dist');
-    const indexFile = path.join(distPath, 'index.html');
 
-    // Статические файлы
-    mainApp.use(express.static(distPath, { 
-      index: false,
-      maxAge: '1d' 
+    // 🔥 КРИТИЧНО: Статика и SPA fallback ТОЛЬКО для НЕ-API путей
+    // Payload уже обработал /api и /admin выше, поэтому эти запросы сюда не дойдут
+    
+    // Отдаём статические файлы (JS, CSS, images)
+    app.use(express.static(distPath, { 
+      index: false,  // НЕ автоматически отдавать index.html
+      maxAge: '1d',
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+      }
     }));
 
-    // SPA fallback
-    mainApp.get('*', (_req, res) => {
+    // SPA fallback для всех остальных путей
+    app.get('*', (req, res) => {
+      const indexFile = path.join(distPath, 'index.html');
       if (fs.existsSync(indexFile)) {
         res.sendFile(indexFile);
       } else {
@@ -116,16 +149,28 @@ mainApp.use(cors());
       }
     });
 
-    // === 6. Запуск ===
+    // Запуск сервера на PORT из окружения (Render задаёт PORT автоматически)
     const PORT = process.env.PORT || 3000;
-    mainApp.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 Server: http://0.0.0.0:${PORT}`);
-      console.log(`📍 Admin: http://0.0.0.0:${PORT}/admin`);
-      console.log(`📍 API: http://0.0.0.0:${PORT}/api`);
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log('');
+      console.log('🚀 ═══════════════════════════════════════════════');
+      console.log(`   Server running on http://0.0.0.0:${PORT}`);
+      console.log('🚀 ═══════════════════════════════════════════════');
+      console.log('');
+      console.log('📍 Admin Panel: /admin');
+      console.log('📍 REST API: /api');
+      console.log('📍 GraphQL: /api/graphql');
+      console.log('📍 Health Check: /health');
+      console.log('📍 Frontend: /');
+      console.log('');
+      console.log('🔐 Login with:');
+      console.log(`   Email: ${process.env.PAYLOAD_SEED_ADMIN_EMAIL || 'admin@tue.nl'}`);
+      console.log(`   Password: ${process.env.PAYLOAD_SEED_ADMIN_PASSWORD || '[check env var]'}`);
+      console.log('');
     });
 
   } catch (err) {
-    console.error('❌ Failed:', err);
+    console.error('❌ Failed to init:', err);
     console.error(err.stack);
     process.exit(1);
   }
