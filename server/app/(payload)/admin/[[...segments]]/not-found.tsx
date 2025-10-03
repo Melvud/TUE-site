@@ -1,3 +1,3 @@
-export default function AdminNotFound() {
-  return null
-}
+import { AdminNotFound } from '@payloadcms/next/admin'
+
+export default AdminNotFound
