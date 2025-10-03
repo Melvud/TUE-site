@@ -13,20 +13,22 @@ const isAdmin = ({ req }) => req.user?.role === 'admin';
 const isEditorOrAdmin = ({ req }) => ['editor', 'admin'].includes(req.user?.role);
 
 export default buildConfig({
-  // ВАЖНО: в v3 secret указывается в конфиге
-  // Ref: Migration guide v2 -> v3
+  // ВАЖНО: secret указывается в конфиге для v3
   secret: process.env.PAYLOAD_SECRET || 'dev-secret',
 
-  serverURL: process.env.SERVER_URL || '',
+  // Для продакшена укажите полный URL
+  serverURL: process.env.SERVER_URL || 'http://localhost:3000',
+  
   telemetry: false,
 
   admin: {
     user: 'users',
-    // можно включить HMR/диагностику при локальной разработке
+    // Явно указываем, что admin включен
+    disable: false,
+    // Для продакшена можно добавить meta, branding, etc
   },
 
-  // ВКЛЮЧАЕМ редактор для всех richText полей
-  // Ref: Rich Text Editor docs
+  // Редактор для richText полей
   editor: lexicalEditor({
     features: ({ defaultFeatures }) => defaultFeatures,
   }),
@@ -35,11 +37,17 @@ export default buildConfig({
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+      ssl: process.env.DATABASE_SSL === 'true' 
+        ? { rejectUnauthorized: false } 
+        : undefined,
     },
   }),
 
-  rateLimit: { window: 60 * 1000, max: 600 },
+  rateLimit: { 
+    window: 60 * 1000, 
+    max: 600,
+    trustProxy: true, // важно для Render/облачных платформ
+  },
 
   // -------- Коллекции --------
   collections: [
@@ -48,9 +56,17 @@ export default buildConfig({
       slug: 'users',
       auth: {
         useAPIKey: false,
-        cookies: { sameSite: 'lax', secure: false },
+        tokenExpiration: 7200, // 2 часа
+        cookies: { 
+          sameSite: 'lax', 
+          secure: process.env.NODE_ENV === 'production',
+          domain: undefined, // пусть браузер сам определяет
+        },
       },
-      admin: { useAsTitle: 'email' },
+      admin: { 
+        useAsTitle: 'email',
+        defaultColumns: ['email', 'name', 'role'],
+      },
       access: {
         read: isEditorOrAdmin,
         create: isAdmin,
@@ -58,7 +74,7 @@ export default buildConfig({
         delete: isAdmin,
       },
       fields: [
-        { name: 'name', type: 'text' },
+        { name: 'name', type: 'text', required: true },
         {
           name: 'role',
           type: 'select',
@@ -69,11 +85,14 @@ export default buildConfig({
       ],
     },
 
-    // Media (локальное хранилище; S3/R2 можно подключить позже плагином)
+    // Media
     {
       slug: 'media',
       labels: { singular: 'Media', plural: 'Media' },
-      upload: true,
+      upload: {
+        staticDir: path.resolve(__dirname, 'uploads'),
+        mimeTypes: ['image/*'],
+      },
       admin: { useAsTitle: 'filename' },
       access: {
         read: () => true,
@@ -95,7 +114,10 @@ export default buildConfig({
       admin: {
         useAsTitle: 'title',
         defaultColumns: ['title', 'date', 'published', 'updatedAt'],
-        preview: (doc) => `${process.env.SERVER_URL || ''}/preview?type=event&id=${doc?.id}`,
+        preview: (doc) => {
+          const baseURL = process.env.SERVER_URL || 'http://localhost:3000';
+          return `${baseURL}/events/${doc?.id}`;
+        },
       },
       access: {
         read: () => true,
@@ -105,14 +127,26 @@ export default buildConfig({
       },
       fields: [
         { name: 'title', type: 'text', required: true },
-        { name: 'date', type: 'text', admin: { description: 'YYYY-MM-DD или YYYY-MM-DD..YYYY-MM-DD' } },
+        { 
+          name: 'date', 
+          type: 'text', 
+          required: true,
+          admin: { 
+            description: 'Format: YYYY-MM-DD or YYYY-MM-DD..YYYY-MM-DD for range' 
+          } 
+        },
         { name: 'googleFormUrl', type: 'text' },
         { name: 'summary', type: 'textarea' },
-        { name: 'content', type: 'richText' },
+        { name: 'content', type: 'richText', required: false },
         { name: 'published', type: 'checkbox', defaultValue: false },
         { name: 'latest', type: 'checkbox', defaultValue: false },
         { name: 'publishAt', type: 'date' },
-        { name: 'cover', type: 'relationship', relationTo: 'media', admin: { description: 'Обложка из Media' } },
+        { 
+          name: 'cover', 
+          type: 'upload',
+          relationTo: 'media', 
+          admin: { description: 'Event cover image' } 
+        },
       ],
     },
 
@@ -124,7 +158,10 @@ export default buildConfig({
       admin: {
         useAsTitle: 'title',
         defaultColumns: ['title', 'date', 'published', 'updatedAt'],
-        preview: (doc) => `${process.env.SERVER_URL || ''}/preview?type=news&id=${doc?.id}`,
+        preview: (doc) => {
+          const baseURL = process.env.SERVER_URL || 'http://localhost:3000';
+          return `${baseURL}/news/${doc?.id}`;
+        },
       },
       access: {
         read: () => true,
@@ -134,21 +171,28 @@ export default buildConfig({
       },
       fields: [
         { name: 'title', type: 'text', required: true },
-        { name: 'date', type: 'date' },
+        { name: 'date', type: 'date', required: true },
         { name: 'author', type: 'text' },
         { name: 'summary', type: 'textarea' },
-        { name: 'content', type: 'richText' },
+        { name: 'content', type: 'richText', required: false },
         { name: 'published', type: 'checkbox', defaultValue: false },
         { name: 'publishAt', type: 'date' },
-        { name: 'cover', type: 'relationship', relationTo: 'media' },
+        { 
+          name: 'cover', 
+          type: 'upload',
+          relationTo: 'media' 
+        },
       ],
     },
 
-    // Members (current)
+    // Members
     {
       slug: 'members',
       labels: { singular: 'Member', plural: 'Members' },
-      admin: { useAsTitle: 'name', defaultColumns: ['name', 'role', 'order'] },
+      admin: { 
+        useAsTitle: 'name', 
+        defaultColumns: ['name', 'role', 'order'] 
+      },
       access: {
         read: () => true,
         create: isEditorOrAdmin,
@@ -159,10 +203,14 @@ export default buildConfig({
         { name: 'name', type: 'text', required: true },
         { name: 'role', type: 'text' },
         { name: 'order', type: 'number', defaultValue: 0 },
-        { name: 'email', type: 'text' },
+        { name: 'email', type: 'email' },
         { name: 'linkedin', type: 'text' },
         { name: 'instagram', type: 'text' },
-        { name: 'photo', type: 'relationship', relationTo: 'media' },
+        { 
+          name: 'photo', 
+          type: 'upload',
+          relationTo: 'media' 
+        },
       ],
     },
 
@@ -179,32 +227,42 @@ export default buildConfig({
       },
       fields: [
         { name: 'originalId', type: 'text' },
-        { name: 'name', type: 'text' },
+        { name: 'name', type: 'text', required: true },
         { name: 'role', type: 'text' },
         { name: 'order', type: 'number' },
-        { name: 'email', type: 'text' },
+        { name: 'email', type: 'email' },
         { name: 'linkedin', type: 'text' },
         { name: 'instagram', type: 'text' },
-        { name: 'photo', type: 'relationship', relationTo: 'media' },
+        { 
+          name: 'photo', 
+          type: 'upload',
+          relationTo: 'media' 
+        },
       ],
     },
 
-    // Join submissions (hook на email остаётся как было — отдельно от встроенного email-адаптера)
+    // Join submissions
     {
       slug: 'joinSubmissions',
       labels: { singular: 'Join Submission', plural: 'Join Submissions' },
-      admin: { useAsTitle: 'id' },
+      admin: { 
+        useAsTitle: 'id',
+        description: 'Form submissions from the Join Us page',
+      },
       access: {
         read: isAdmin,
-        create: () => true,
+        create: () => true, // публичная отправка
         update: isAdmin,
         delete: isAdmin,
       },
-      fields: [{ name: 'payload', type: 'json', required: true }],
+      fields: [
+        { name: 'payload', type: 'json', required: true },
+      ],
       hooks: {
         afterChange: [
           async ({ doc, operation }) => {
             if (operation !== 'create') return;
+            
             try {
               const nodemailer = await import('nodemailer');
               const host = process.env.SMTP_HOST;
@@ -212,7 +270,11 @@ export default buildConfig({
               const user = process.env.SMTP_USER;
               const pass = process.env.SMTP_PASS;
               const to = process.env.EMAIL_TO || 'ivsilan2005@gmail.com';
-              if (!host || !user || !pass) return;
+              
+              if (!host || !user || !pass) {
+                console.warn('📧 SMTP not configured, skipping email');
+                return;
+              }
 
               const transporter = nodemailer.createTransport({
                 host,
@@ -224,25 +286,35 @@ export default buildConfig({
               const data = doc?.payload || {};
               const subject = data.subject || 'Join form submission';
               const rows = Object.entries(data)
-                .map(
-                  ([k, v]) =>
-                    `<tr><td><strong>${k}</strong></td><td>${
-                      typeof v === 'object' ? `<pre>${JSON.stringify(v, null, 2)}</pre>` : String(v || '')
-                    }</td></tr>`,
+                .map(([k, v]) =>
+                  `<tr><td><strong>${k}</strong></td><td>${
+                    typeof v === 'object' 
+                      ? `<pre>${JSON.stringify(v, null, 2)}</pre>` 
+                      : String(v || '')
+                  }</td></tr>`
                 )
                 .join('');
 
               await transporter.sendMail({
-                from: `"Website" <${user}>`,
+                from: `"PhE Website" <${user}>`,
                 to,
                 subject,
                 text: Object.entries(data)
                   .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
                   .join('\n'),
-                html: `<div style="font-family:system-ui,Segoe UI,Roboto,sans-serif"><h2>Join form submission</h2><table border="1" cellspacing="0" cellpadding="6">${rows}</table></div>`,
+                html: `
+                  <div style="font-family:system-ui,sans-serif">
+                    <h2>Join Form Submission</h2>
+                    <table border="1" cellspacing="0" cellpadding="6">
+                      ${rows}
+                    </table>
+                  </div>
+                `,
               });
+              
+              console.log('📧 Email sent successfully');
             } catch (e) {
-              console.warn('[email hook] failed:', e.message);
+              console.error('📧 Email hook failed:', e.message);
             }
           },
         ],
@@ -250,10 +322,13 @@ export default buildConfig({
     },
   ],
 
-  // Плагины сейчас не используем (S3/R2 подключим позже совместимой версией)
   plugins: [],
 
-  // Сервисные настройки
-  typescript: { outputFile: path.resolve(__dirname, './payload-types.ts') },
-  graphQL: { disable: false },
+  typescript: { 
+    outputFile: path.resolve(__dirname, './payload-types.ts') 
+  },
+  
+  graphQL: { 
+    disable: false 
+  },
 });
