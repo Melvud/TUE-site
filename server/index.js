@@ -6,6 +6,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
+const { Client } = require('pg');
 
 dotenv.config();
 
@@ -13,7 +14,6 @@ const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', true);
 
-// Рабочая директория — корень проекта (../ от папки server)
 const projectRoot = path.resolve(__dirname, '..');
 process.chdir(projectRoot);
 console.log('📁 CWD set to:', process.cwd());
@@ -33,13 +33,66 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d', immutable: true }));
 
-// Health check ПЕРЕД Payload
+// Health check
 app.get('/health', (_req, res) => res.status(200).send('ok'));
 
-// Инициализация Payload и настройка роутинга
+// 🔍 Проверка БД перед инициализацией Payload
+async function checkDatabase() {
+  console.log('\n🔍 Checking database connection and tables...\n');
+  
+  const client = new Client({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+  });
+
+  try {
+    await client.connect();
+    console.log('✅ Database connection successful');
+
+    // Проверяем список таблиц
+    const result = await client.query(`
+      SELECT tablename 
+      FROM pg_tables 
+      WHERE schemaname = 'public' 
+      ORDER BY tablename
+    `);
+
+    console.log(`\n📊 Found ${result.rows.length} tables:`);
+    result.rows.forEach((row) => console.log(`  - ${row.tablename}`));
+
+    // Критичные таблицы для Payload
+    const requiredTables = ['users', 'media', 'events', 'news', 'members', 'payload_migrations'];
+    const existingTables = result.rows.map(r => r.tablename);
+    const missingTables = requiredTables.filter(t => !existingTables.includes(t));
+
+    if (missingTables.length > 0) {
+      console.error('\n❌ CRITICAL: Missing required tables:');
+      missingTables.forEach(t => console.error(`  - ${t}`));
+      console.error('\n💡 Please run the SQL schema creation script in Neon Console!');
+      console.error('   See: https://console.neon.tech → SQL Editor\n');
+      throw new Error('Database schema not initialized');
+    }
+
+    console.log('\n✅ All required tables exist\n');
+
+    // Проверяем есть ли админ
+    const adminCheck = await client.query('SELECT COUNT(*) as count FROM users');
+    console.log(`👤 Users in database: ${adminCheck.rows[0].count}\n`);
+
+  } catch (err) {
+    console.error('\n❌ Database check failed:', err.message);
+    throw err;
+  } finally {
+    await client.end();
+  }
+}
+
+// Инициализация Payload
 (async () => {
   try {
-    // Выбираем .mjs‑конфиг для рантайма; при его отсутствии fallback на .js
+    // 🔥 СНАЧАЛА проверяем БД
+    await checkDatabase();
+
     const mjsPath = path.resolve(__dirname, 'payload.config.mjs');
     const jsPath  = path.resolve(__dirname, 'payload.config.js');
     const configPath = fs.existsSync(mjsPath) ? mjsPath : jsPath;
@@ -47,124 +100,99 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
 
     console.log('➡️  Loading Payload config from:', configPath);
 
-    // Динамический импорт Payload (работает как с CJS, так и с ESM)
     const payloadMod = await import('payload');
     const payload = payloadMod.default ?? payloadMod;
 
-    // Загружаем конфиг (поддерживает .mjs и .js)
     const cfgMod = await import(configPath + `?t=${Date.now()}`);
     const payloadConfig = cfgMod.default ?? cfgMod;
 
     console.log('🔧 Initializing Payload CMS...');
     
-    // 🔥 КЛЮЧЕВОЙ МОМЕНТ: Payload автоматически монтируется в app
     await payload.init({
       secret: process.env.PAYLOAD_SECRET || 'dev-secret',
       express: app,
       config: payloadConfig,
-      onInit: async (payloadInstance) => {
+      onInit: async (instance) => {
         console.log('✅ Payload CMS initialized');
 
-        // Создание админа при первом старте
         const email = process.env.PAYLOAD_SEED_ADMIN_EMAIL;
         const pass = process.env.PAYLOAD_SEED_ADMIN_PASSWORD;
         
         if (email && pass) {
           try {
-            // Удаляем временного админа из SQL (если есть)
-            try {
-              await payloadInstance.delete({
-                collection: 'users',
-                where: {
-                  email: { equals: email },
-                  hash: { equals: '$2a$10$dummyhashfornow' },
-                },
-              });
-              console.log('🗑️  Removed temporary admin from SQL');
-            } catch (e) {
-              // Игнорируем если не найден
-            }
-
-            // Проверяем существование реального админа
-            const { docs } = await payloadInstance.find({
+            const { docs } = await instance.find({
               collection: 'users',
               where: { email: { equals: email } },
               limit: 1,
             });
             
             if (!docs?.length) {
-              // Создаём админа с правильным хешем пароля
-              await payloadInstance.create({
+              await instance.create({
                 collection: 'users',
-                data: { 
-                  email, 
-                  password: pass, 
-                  name: 'Admin', 
-                  role: 'admin' 
-                },
+                data: { email, password: pass, name: 'Admin', role: 'admin' },
               });
-              console.log(`👤 Seed admin created: ${email}`);
+              console.log(`👤 Admin created: ${email}`);
             } else {
-              console.log(`👤 Admin already exists: ${email}`);
+              console.log(`👤 Admin exists: ${email}`);
             }
           } catch (err) {
-            console.error('❌ Seed admin failed:', err.message);
+            console.error('❌ Admin seed failed:', err.message);
           }
         }
       },
     });
 
-    console.log('✅ Payload routes mounted at /api and /admin');
+    console.log('✅ Payload routes mounted');
 
-    // 🔥 ВАЖНО: Убедимся что /admin и /admin/ оба работают
-    // (Payload может монтировать только один из вариантов)
-    app.use((req, res, next) => {
-      // Если запрос к /admin без слеша - добавляем слеш
-      if (req.path === '/admin') {
-        return res.redirect(301, '/admin/');
+    // 🔍 Проверяем зарегистрированные роуты
+    console.log('\n📍 Checking registered routes...');
+    let adminFound = false;
+    let apiFound = false;
+
+    app._router.stack.forEach((middleware) => {
+      if (middleware.route) {
+        if (middleware.route.path.includes('admin')) adminFound = true;
+        if (middleware.route.path.includes('api')) apiFound = true;
+      } else if (middleware.name === 'router' && middleware.regexp) {
+        const path = middleware.regexp.source;
+        if (path.includes('admin')) {
+          adminFound = true;
+          console.log('  ✅ Found /admin routes');
+        }
+        if (path.includes('api')) {
+          apiFound = true;
+          console.log('  ✅ Found /api routes');
+        }
       }
-      next();
     });
 
-    // Upload endpoint (если нужен дополнительно)
+    if (!adminFound) console.warn('  ⚠️  /admin routes NOT found!');
+    if (!apiFound) console.warn('  ⚠️  /api routes NOT found!');
+    console.log('');
+
+    // Upload endpoint
     app.post('/api/upload-local', upload.single('file'), (req, res) => {
       if (!req.file) return res.status(400).json({ error: 'No file' });
       res.json({ url: `/uploads/${req.file.filename}` });
     });
 
-    // Путь к собранному фронтенду (Vite)
+    // Фронтенд (SPA)
     const distPath = path.resolve(projectRoot, 'dist');
 
-    // 🔥 КРИТИЧНО: Статика и SPA fallback ТОЛЬКО для НЕ-API путей
-    // Payload уже обработал /api и /admin выше, поэтому эти запросы сюда не дойдут
-    
-    // Отдаём статические файлы (JS, CSS, images), но НЕ для /api и /admin
+    // Статика
     app.use((req, res, next) => {
-      // Пропускаем Payload роуты
       if (req.path.startsWith('/api') || req.path.startsWith('/admin')) {
         return next();
       }
-      // Для остальных пробуем отдать статику
-      express.static(distPath, { 
-        index: false,  // НЕ автоматически отдавать index.html
-        maxAge: '1d',
-        setHeaders: (res, filePath) => {
-          if (filePath.endsWith('.html')) {
-            res.setHeader('Cache-Control', 'no-cache');
-          }
-        }
-      })(req, res, next);
+      express.static(distPath, { index: false, maxAge: '1d' })(req, res, next);
     });
 
-    // SPA fallback для всех остальных путей
-    // 🔥 КРИТИЧНО: НЕ перехватываем /api и /admin - они уже обработаны Payload
+    // SPA fallback
     app.get('*', (req, res, next) => {
-      // Если путь начинается с /api или /admin - пропускаем
       if (req.path.startsWith('/api') || req.path.startsWith('/admin')) {
         return next();
       }
       
-      // Для всех остальных путей отдаём index.html
       const indexFile = path.join(distPath, 'index.html');
       if (fs.existsSync(indexFile)) {
         res.sendFile(indexFile);
@@ -173,28 +201,25 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
       }
     });
 
-    // Запуск сервера на PORT из окружения (Render задаёт PORT автоматически)
+    // Запуск сервера
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, '0.0.0.0', () => {
-      console.log('');
       console.log('🚀 ═══════════════════════════════════════════════');
-      console.log(`   Server running on http://0.0.0.0:${PORT}`);
+      console.log(`   Server: http://0.0.0.0:${PORT}`);
       console.log('🚀 ═══════════════════════════════════════════════');
       console.log('');
-      console.log('📍 Admin Panel: /admin');
-      console.log('📍 REST API: /api');
-      console.log('📍 GraphQL: /api/graphql');
-      console.log('📍 Health Check: /health');
-      console.log('📍 Frontend: /');
+      console.log('📍 Admin: /admin');
+      console.log('📍 API: /api');
+      console.log('📍 Health: /health');
       console.log('');
-      console.log('🔐 Login with:');
-      console.log(`   Email: ${process.env.PAYLOAD_SEED_ADMIN_EMAIL || 'admin@tue.nl'}`);
-      console.log(`   Password: ${process.env.PAYLOAD_SEED_ADMIN_PASSWORD || '[check env var]'}`);
+      console.log('🔐 Login credentials:');
+      console.log(`   ${process.env.PAYLOAD_SEED_ADMIN_EMAIL || 'admin@tue.nl'}`);
+      console.log(`   ${process.env.PAYLOAD_SEED_ADMIN_PASSWORD || '[see env]'}`);
       console.log('');
     });
 
   } catch (err) {
-    console.error('❌ Failed to init:', err);
+    console.error('❌ Startup failed:', err);
     console.error(err.stack);
     process.exit(1);
   }
