@@ -38,10 +38,13 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
 
 (async () => {
   try {
-    const configPath = path.resolve(__dirname, 'payload.config.ts');
+    const mjsPath = path.resolve(__dirname, 'payload.config.mjs');
+    const tsPath  = path.resolve(__dirname, 'payload.config.ts');
+    const configPath = fs.existsSync(mjsPath) ? mjsPath : tsPath;
+
     console.log('➡️  Loading Payload config from:', configPath);
     if (!fs.existsSync(configPath)) {
-      throw new Error('payload.config.ts missing in /server');
+      throw new Error('payload.config.mjs/ts missing in /server');
     }
 
     const rawDbUrl = process.env.DATABASE_URL || '';
@@ -58,7 +61,7 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
     const payloadConfig = cfgMod.default ?? cfgMod;
 
     if (!payloadConfig || typeof payloadConfig !== 'object') {
-      throw new Error('Invalid payload.config.ts export');
+      throw new Error('Invalid payload config export');
     }
 
     console.log('🔧 Initializing Payload CMS...');
@@ -83,11 +86,11 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
             if (!docs?.length) {
               await payloadInstance.create({
                 collection: 'users',
-                data: { 
-                  email, 
-                  password: pass, 
-                  name: 'Admin', 
-                  role: 'admin' 
+                data: {
+                  email,
+                  password: pass,
+                  name: 'Admin',
+                  role: 'admin'
                 },
               });
               console.log(`👤 Seed admin created: ${email}`);
@@ -112,7 +115,7 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
       if (req.path.startsWith('/api') || req.path.startsWith('/admin')) {
         return next();
       }
-      express.static(distPath, { 
+      express.static(distPath, {
         index: false,
         maxAge: '1d',
       })(req, res, next);
@@ -122,7 +125,7 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
       if (req.path.startsWith('/api') || req.path.startsWith('/admin')) {
         return next();
       }
-      
+
       const indexPath = path.join(distPath, 'index.html');
       if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
