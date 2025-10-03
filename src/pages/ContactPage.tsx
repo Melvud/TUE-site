@@ -14,7 +14,11 @@ const ContactPage: React.FC = () => {
     const form = e.currentTarget;
     const data = Object.fromEntries(new FormData(form).entries());
     try {
-      await apiPost('/api/contact', data);
+      await apiPost('/api/forms/submit', {
+        subject: 'Contact form',
+        type: 'contact',
+        ...data,
+      });
       setSent('ok');
       form.reset();
     } catch (err: any) {

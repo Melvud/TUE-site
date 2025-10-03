@@ -1,348 +1,222 @@
 // src/context/DataContext.tsx
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import type { Event, News, AuthUser, HomePageContent, AboutPageContent, JoinUsPageContent } from '../types';
-import { apiDelete, apiGet, apiPost, apiPut, apiGetPage, apiUpdatePage } from '../api/client';
-import { toFileUrl, fixUploadsInHtml } from '../api/client';
+import React from 'react';
+import { apiGet, mediaUrl } from '../api/client';
+import type {
+  Event,
+  News,
+  TeamMember,
+  HomePageContent,
+  AboutPageContent,
+  JoinUsPageContent,
+} from '../types';
 
-type Member = {
-  id: string | number;
-  name: string;
-  role: string;
-  photoUrl: string;
-  email?: string;
-  linkedin?: string;
-  instagram?: string;
-  order?: number;
-};
-
-interface DataContextShape {
+type DataContextType = {
+  loading: boolean;
   events: Event[];
   news: News[];
-  members: Member[];
-  pastMembers: Member[];
+  members: TeamMember[];
+  pastMembers: TeamMember[];
   homePageContent: HomePageContent | null;
   aboutPageContent: AboutPageContent | null;
   joinUsPageContent: JoinUsPageContent | null;
-  loading: boolean;
+  reload: () => Promise<void>;
+};
 
-  isAuthenticated: boolean;
-  token: string | null;
-  user: AuthUser | null;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+const DataContext = React.createContext<DataContextType>({
+  loading: true,
+  events: [],
+  news: [],
+  members: [],
+  pastMembers: [],
+  homePageContent: null,
+  aboutPageContent: null,
+  joinUsPageContent: null,
+  reload: async () => {},
+});
 
-  refresh: () => Promise<void>;
+export const useData = () => React.useContext(DataContext);
 
-  createEvent: (payload: Partial<Event>) => Promise<Event>;
-  updateEvent: (id: string, payload: Partial<Event>) => Promise<Event>;
-  deleteEvent: (id: string) => Promise<void>;
-
-  createNews: (payload: Partial<News>) => Promise<News>;
-  updateNews: (id: string, payload: Partial<News>) => Promise<News>;
-  deleteNews: (id: string) => Promise<void>;
-
-  createMember: (payload: Partial<Member>) => Promise<Member>;
-  updateMember: (id: string | number, payload: Partial<Member>) => Promise<Member>;
-  deleteMember: (id: string | number) => Promise<void>;
-  moveMemberToPast: (id: string | number) => Promise<void>;
-  restorePastMember: (id: string | number) => Promise<void>;
-  reorderMembers: (ids: Array<string | number>) => Promise<void>;
-
-  updateHomePage: (content: HomePageContent) => Promise<void>;
-  updateAboutPage: (content: AboutPageContent) => Promise<void>;
-  updateJoinUsPage: (content: JoinUsPageContent) => Promise<void>;
-}
-
-const DataContext = createContext<DataContextShape | null>(null);
-
-const eqId = (a: string | number, b: string | number) => String(a) === String(b);
-
-function usePersistedToken() {
-  const [token, setToken] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem('auth_token');
-    } catch {
-      return null;
-    }
-  });
-  useEffect(() => {
-    try {
-      if (token) localStorage.setItem('auth_token', token);
-      else localStorage.removeItem('auth_token');
-    } catch {}
-  }, [token]);
-  return { token, setToken } as const;
-}
-
-function normalizeEvent(e: any): Event {
-  const cover = toFileUrl(e?.coverUrl) ?? e?.coverUrl;
-  const html = fixUploadsInHtml(e?.content) ?? e?.content;
-  return { ...(e || {}), coverUrl: cover, content: html };
-}
-function normalizeNews(n: any): News {
-  const cover = toFileUrl(n?.coverUrl) ?? n?.coverUrl;
-  const html = fixUploadsInHtml(n?.content) ?? n?.content;
-  return { ...(n || {}), coverUrl: cover, content: html };
-}
-function normalizeMember(m: any): Member {
-  return {
-    ...(m || {}),
-    photoUrl: toFileUrl(m?.photoUrl) ?? m?.photoUrl,
-  };
+function usePreviewFlag(): boolean {
+  if (typeof window === 'undefined') return false;
+  const p = new URLSearchParams(window.location.search);
+  return p.get('preview') === '1';
 }
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [events, setEvents] = useState<Event[]>([]);
-  const [news, setNews] = useState<News[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [pastMembers, setPastMembers] = useState<Member[]>([]);
-  const [homePageContent, setHomePageContent] = useState<HomePageContent | null>(null);
-  const [aboutPageContent, setAboutPageContent] = useState<AboutPageContent | null>(null);
-  const [joinUsPageContent, setJoinUsPageContent] = useState<JoinUsPageContent | null>(null);
-  const [loading, setLoading] = useState(true);
-  const { token, setToken } = usePersistedToken();
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = React.useState(true);
 
-  const isAuthenticated = Boolean(token);
+  const [events, setEvents] = React.useState<Event[]>([]);
+  const [news, setNews] = React.useState<News[]>([]);
+  const [members, setMembers] = React.useState<TeamMember[]>([]);
+  const [pastMembers, setPastMembers] = React.useState<TeamMember[]>([]);
+  const [homePageContent, setHome] = React.useState<HomePageContent | null>(null);
+  const [aboutPageContent, setAbout] = React.useState<AboutPageContent | null>(null);
+  const [joinUsPageContent, setJoin] = React.useState<JoinUsPageContent | null>(null);
 
-  const getWithFallback = async <T,>(adminPath: string, publicPath: string): Promise<T> => {
-    if (isAuthenticated && token) {
-      try {
-        return await apiGet<T>(adminPath, token);
-      } catch {}
-    }
-    return await apiGet<T>(publicPath);
-  };
+  const draft = usePreviewFlag();
 
-  const load = async () => {
+  const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const [n, e, m, pm, home, about, joinUs] = await Promise.all([
-        getWithFallback<any[]>('/api/news/admin', '/api/news'),
-        getWithFallback<any[]>('/api/events/admin', '/api/events'),
-        getWithFallback<any[]>('/api/members/admin', '/api/members'),
-        getWithFallback<any[]>('/api/members/past/admin', '/api/members/past'),
-        apiGetPage<HomePageContent>('home').catch(() => null),
-        apiGetPage<AboutPageContent>('about').catch(() => null),
-        apiGetPage<JoinUsPageContent>('joinUs').catch(() => null),
-      ]);
+      // ===== Globals =====
+      const home = await apiGet<any>('/api/globals/home', undefined, draft).catch(() => null);
+      const about = await apiGet<any>('/api/globals/about', undefined, draft).catch(() => null);
+      const join = await apiGet<any>('/api/globals/join', undefined, draft).catch(() => null);
 
-      const nn = (Array.isArray(n) ? n : [])
-        .filter((x) => x && typeof x === 'object')
-        .map(normalizeNews);
+      setHome(
+        home
+          ? {
+              typedPhrases: Array.isArray(home.typedPhrases)
+                ? home.typedPhrases
+                : (home.typedPhrases?.map?.((x: any) => x?.value) ?? []),
+              heroImage: mediaUrl(home?.hero?.image) || home?.heroImage || '',
+            }
+          : { typedPhrases: [], heroImage: '' }
+      );
 
-      const ee = (Array.isArray(e) ? e : [])
-        .filter((x) => x && typeof x === 'object')
-        .map(normalizeEvent);
+      setAbout(
+        about
+          ? {
+              sections: Array.isArray(about.sections)
+                ? about.sections.map((s: any) => ({
+                    id: s.id || cryptoRandom(),
+                    type: s.layout || s.type || 'text-image',
+                    title: s.title || '',
+                    text: s.text || '',
+                    image: mediaUrl(s.image) || s.image || '',
+                  }))
+                : [],
+            }
+          : { sections: [] }
+      );
 
-      const mm = (Array.isArray(m) ? m : [])
-        .filter((x) => x && typeof x === 'object')
-        .map(normalizeMember)
-        .sort((a: any, b: any) => (a?.order ?? 0) - (b?.order ?? 0));
+      setJoin(
+        join
+          ? {
+              introText: join.introText || '',
+              detailsHtml: join.detailsHtml || '',
+              formFields: Array.isArray(join.formFields)
+                ? join.formFields.map((f: any) => ({
+                    id: f.id || cryptoRandom(),
+                    name: f.name,
+                    label: f.label,
+                    type: f.type,
+                    required: !!f.required,
+                    placeholder: f.placeholder,
+                    options: Array.isArray(f.options) ? f.options.map((o: any) => (typeof o === 'string' ? o : o?.value)) : undefined,
+                  }))
+                : [],
+            }
+          : { introText: '', detailsHtml: '', formFields: [] }
+      );
 
-      const ppm = (Array.isArray(pm) ? pm : [])
-        .filter((x) => x && typeof x === 'object')
-        .map(normalizeMember);
+      // ===== Collections =====
+      // EVENTS
+      const eventsRes = await apiGet<any>('/api/events', { limit: 100, sort: '-createdAt' }, draft);
+      const eventsDocs = Array.isArray(eventsRes?.docs) ? eventsRes.docs : Array.isArray(eventsRes) ? eventsRes : [];
+      setEvents(
+        eventsDocs.map((e: any) => ({
+          id: e.id,
+          slug: e.slug,
+          title: e.title,
+          date: e.date,
+          coverUrl: mediaUrl(e.cover) || e.coverUrl || e.image || '',
+          googleFormUrl: e.googleFormUrl,
+          summary: e.summary,
+          content: e.content || '',
+          published: !!e.published,
+          latest: !!e.latest,
+          publishAt: e.publishAt || null,
+          createdAt: e.createdAt,
+          updatedAt: e.updatedAt,
+        }))
+      );
 
-      setNews(nn);
-      setEvents(ee);
-      setMembers(mm);
-      setPastMembers(ppm);
-      setHomePageContent(home);
-      setAboutPageContent(about);
-      setJoinUsPageContent(joinUs);
-    } catch {
-      setNews([]);
-      setEvents([]);
-      setMembers([]);
-      setPastMembers([]);
-      setHomePageContent(null);
-      setAboutPageContent(null);
-      setJoinUsPageContent(null);
+      // NEWS
+      const newsRes = await apiGet<any>('/api/news', { limit: 100, sort: '-createdAt' }, draft);
+      const newsDocs = Array.isArray(newsRes?.docs) ? newsRes.docs : Array.isArray(newsRes) ? newsRes : [];
+      setNews(
+        newsDocs.map((n: any) => ({
+          id: n.id,
+          slug: n.slug,
+          title: n.title,
+          date: n.date,
+          author: n.author,
+          coverUrl: mediaUrl(n.cover) || n.coverUrl || n.image || '',
+          image: mediaUrl(n.cover) || n.coverUrl || n.image || '',
+          summary: n.summary,
+          snippet: n.snippet || n.summary,
+          content: n.content || '',
+          published: !!n.published,
+          publishAt: n.publishAt || null,
+          createdAt: n.createdAt,
+          updatedAt: n.updatedAt,
+        }))
+      );
+
+      // MEMBERS
+      const membersRes = await apiGet<any>('/api/members', { limit: 200, sort: 'order' }, draft);
+      const membersDocs = Array.isArray(membersRes?.docs) ? membersRes.docs : Array.isArray(membersRes) ? membersRes : [];
+      setMembers(
+        membersDocs.map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          role: m.role,
+          photoUrl: mediaUrl(m.photo) || m.photoUrl || m.image || '',
+          email: m.email,
+          linkedin: m.linkedin,
+          instagram: m.instagram,
+          order: m.order ?? 0,
+          createdAt: m.createdAt,
+          updatedAt: m.updatedAt,
+        }))
+      );
+
+      // PAST MEMBERS — доступ закрыт публично в конфиге, поэтому просто пробуем и молча игнорируем 403
+      try {
+        const pastRes = await apiGet<any>('/api/membersPast', { limit: 200, sort: '-createdAt' }, draft);
+        const pastDocs = Array.isArray(pastRes?.docs) ? pastRes.docs : Array.isArray(pastRes) ? pastRes : [];
+        setPastMembers(
+          pastDocs.map((m: any) => ({
+            id: m.id,
+            name: m.name,
+            role: m.role,
+            photoUrl: mediaUrl(m.photo) || m.photoUrl || m.image || '',
+          }))
+        );
+      } catch {
+        setPastMembers([]); // нет прав — не проблема, страница обойдётся без этого списка
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [draft]);
 
-  useEffect(() => {
-    void load();
-  }, [isAuthenticated]);
+  React.useEffect(() => {
+    load();
+  }, [load]);
 
-  const login = async (email: string, password: string) => {
-    const resp = await apiPost<{ token: string; user: AuthUser }>('/api/auth/login', {
-      email,
-      password,
-    });
-    if (!resp || !resp.token) throw new Error('Login failed');
-    setToken(resp.token);
-    setUser(resp.user);
-    await load();
-  };
-
-  const logout = () => {
-    setToken(null);
-    setUser(null);
-    void load();
-  };
-
-  const createEvent = async (payload: Partial<Event>) => {
-    const created = await apiPost<Event>('/api/events', payload, token || undefined);
-    const normalized = normalizeEvent(created);
-    setEvents((s) => {
-      let next = [normalized, ...s];
-      if ((normalized as any).latest) {
-        next = next.map((e) =>
-          eqId((e as any).id, (normalized as any).id)
-            ? normalized
-            : { ...(e as any), latest: false as any }
-        );
-      }
-      return next;
-    });
-    return normalized;
-  };
-
-  const updateEvent = async (id: string, payload: Partial<Event>) => {
-    const updated = await apiPut<Event>(`/api/events/${id}`, payload, token || undefined);
-    const normalized = normalizeEvent(updated);
-    setEvents((s) => {
-      let next = s.map((e) => (eqId((e as any).id, id) ? normalized : e));
-      if ((normalized as any).latest) {
-        next = next.map((e) =>
-          eqId((e as any).id, id) ? normalized : { ...(e as any), latest: false as any }
-        );
-      }
-      return next;
-    });
-    return normalized;
-  };
-
-  const deleteEvent = async (id: string) => {
-    await apiDelete(`/api/events/${id}`, token || undefined);
-    setEvents((s) => s.filter((e) => !eqId((e as any).id, id)));
-  };
-
-  const createNews = async (payload: Partial<News>) => {
-    const created = await apiPost<News>('/api/news', payload, token || undefined);
-    const normalized = normalizeNews(created);
-    setNews((s) => [normalized, ...s]);
-    return normalized;
-  };
-
-  const updateNews = async (id: string, payload: Partial<News>) => {
-    const updated = await apiPut<News>(`/api/news/${id}`, payload, token || undefined);
-    const normalized = normalizeNews(updated);
-    setNews((s) => s.map((n) => (eqId((n as any).id, id) ? normalized : n)));
-    return normalized;
-  };
-
-  const deleteNews = async (id: string) => {
-    await apiDelete(`/api/news/${id}`, token || undefined);
-    setNews((s) => s.filter((n) => !eqId((n as any).id, id)));
-  };
-
-  const createMember = async (payload: Partial<Member>) => {
-    const created = await apiPost<Member>('/api/members', payload, token || undefined);
-    const normalized = normalizeMember(created);
-    setMembers((s) =>
-      [...s, normalized].sort((a: any, b: any) => (a?.order ?? 0) - (b?.order ?? 0))
-    );
-    return normalized;
-  };
-  const updateMember = async (id: string | number, payload: Partial<Member>) => {
-    const updated = await apiPut<Member>(`/api/members/${id}`, payload, token || undefined);
-    const normalized = normalizeMember(updated);
-    setMembers((s) =>
-      s
-        .map((m) => (eqId(m.id as any, id as any) ? normalized : m))
-        .sort((a: any, b: any) => (a?.order ?? 0) - (b?.order ?? 0))
-    );
-    return normalized;
-  };
-  const deleteMember = async (id: string | number) => {
-    await apiDelete(`/api/members/${id}`, token || undefined);
-    setMembers((s) => s.filter((m) => !eqId(m.id as any, id as any)));
-  };
-  const moveMemberToPast = async (id: string | number) => {
-    await apiPost(`/api/members/${id}/move-to-past`, {}, token || undefined);
-    await load();
-  };
-  const restorePastMember = async (id: string | number) => {
-    await apiPost(`/api/past-members/${id}/restore`, {}, token || undefined);
-    await load();
-  };
-  const reorderMembers = async (ids: Array<string | number>) => {
-    await apiPost('/api/members/reorder', { ids }, token || undefined);
-    await load();
-  };
-
-  const updateHomePage = async (content: HomePageContent) => {
-    const updated = await apiUpdatePage('home', content, token || undefined);
-    setHomePageContent(updated);
-  };
-
-  const updateAboutPage = async (content: AboutPageContent) => {
-    const updated = await apiUpdatePage('about', content, token || undefined);
-    setAboutPageContent(updated);
-  };
-
-  const updateJoinUsPage = async (content: JoinUsPageContent) => {
-    const updated = await apiUpdatePage('joinUs', content, token || undefined);
-    setJoinUsPageContent(updated);
-  };
-
-  const value = useMemo<DataContextShape>(
-    () => ({
-      events,
-      news,
-      members,
-      pastMembers,
-      homePageContent,
-      aboutPageContent,
-      joinUsPageContent,
-      loading,
-      isAuthenticated,
-      token,
-      user,
-      login,
-      logout,
-      refresh: load,
-      createEvent,
-      updateEvent,
-      deleteEvent,
-      createNews,
-      updateNews,
-      deleteNews,
-      createMember,
-      updateMember,
-      deleteMember,
-      moveMemberToPast,
-      restorePastMember,
-      reorderMembers,
-      updateHomePage,
-      updateAboutPage,
-      updateJoinUsPage,
-    }),
-    [
-      events,
-      news,
-      members,
-      pastMembers,
-      homePageContent,
-      aboutPageContent,
-      joinUsPageContent,
-      loading,
-      isAuthenticated,
-      token,
-      user,
-    ]
+  return (
+    <DataContext.Provider
+      value={{
+        loading,
+        events,
+        news,
+        members,
+        pastMembers,
+        homePageContent,
+        aboutPageContent,
+        joinUsPageContent,
+        reload: load,
+      }}
+    >
+      {children}
+    </DataContext.Provider>
   );
-
-  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 };
 
-export const useData = () => {
-  const ctx = useContext(DataContext);
-  if (!ctx) throw new Error('useData must be used within a DataProvider');
-  return ctx;
-};
+// Простой генератор id для форм/секций
+function cryptoRandom() {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
+  return Math.random().toString(36).slice(2);
+}
