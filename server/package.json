@@ -4,8 +4,8 @@
     "type": "module",
     "description": "Minimal API for TUE-site (news/events/auth/forms/uploads)",
     "scripts": {
-        "dev": "nodemon src/index.js",
-        "start": "node src/index.js"
+        "start": "node index.js",
+        "dev": "nodemon index.js"
     },
     "dependencies": {
         "cors": "^2.8.5",
