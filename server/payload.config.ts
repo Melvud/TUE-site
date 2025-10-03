@@ -1,19 +1,23 @@
-// CommonJS-конфиг для Payload CLI (payload migrate / payload serve)
-// Делает то же самое, что и .mjs-версия, но без ESM-импортов и TS-типов.
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { buildConfig } from 'payload';
+import { postgresAdapter } from '@payloadcms/db-postgres';
+import { lexicalEditor } from '@payloadcms/richtext-lexical';
 
-const path = require('path');
-const { postgresAdapter } = require('@payloadcms/db-postgres');
-const { lexicalEditor } = require('@payloadcms/richtext-lexical');
-const { buildConfig } = require('payload');
+// __dirname в ESM/TS
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// Роли без TS-типов
-const ROLES = ['viewer', 'editor', 'admin'];
+// Простейшие проверки ролей (без TS-типов Payload, чтобы не ловить конфликтов)
+const ROLES = ['viewer', 'editor', 'admin'] as const;
+type Role = (typeof ROLES)[number];
 
-const isAdmin = ({ req }) => req?.user?.role === 'admin';
-const isEditorOrAdmin = ({ req }) => ['editor', 'admin'].includes(req?.user?.role);
+const isAdmin = ({ req }: { req: any }) => req?.user?.role === 'admin';
+const isEditorOrAdmin = ({ req }: { req: any }) =>
+  (['editor', 'admin'] as Role[]).includes(req?.user?.role as Role);
 
-module.exports = buildConfig({
-  // Если PAYLOAD_SECRET не задан — dev-значение, чтобы не падать на первом старте
+export default buildConfig({
+  // ВНИМАНИЕ: в проде задайте PAYLOAD_SECRET, SERVER_URL
   secret: process.env.PAYLOAD_SECRET || 'dev-secret',
   serverURL: process.env.SERVER_URL || 'http://localhost:3000',
   telemetry: false,
@@ -23,31 +27,38 @@ module.exports = buildConfig({
     disable: false,
   },
 
+  // Редактор
   editor: lexicalEditor({
     features: ({ defaultFeatures }) => defaultFeatures,
   }),
 
+  // БД (Postgres)
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+      ssl:
+        process.env.DATABASE_SSL === 'true'
+          ? { rejectUnauthorized: false }
+          : undefined,
     },
     migrationDir: path.resolve(__dirname, 'migrations'),
   }),
 
+  // Рейт-лимит
   rateLimit: {
     window: 60 * 1000,
     max: 600,
     trustProxy: true,
   },
 
+  // Коллекции
   collections: [
     // Users
     {
       slug: 'users',
       auth: {
         useAPIKey: false,
-        tokenExpiration: 7200,
+        tokenExpiration: 60 * 60 * 2, // 2 часа
         cookies: {
           sameSite: 'lax',
           secure: process.env.NODE_ENV === 'production',
@@ -113,6 +124,7 @@ module.exports = buildConfig({
       },
       fields: [
         { name: 'title', type: 'text', required: true },
+        // В исходном проекте дата события — строка
         { name: 'date', type: 'text', required: true },
         { name: 'googleFormUrl', type: 'text' },
         { name: 'summary', type: 'textarea' },
@@ -182,6 +194,7 @@ module.exports = buildConfig({
       labels: { singular: 'Past Member', plural: 'Past Members' },
       admin: { useAsTitle: 'name' },
       access: {
+        // В исходнике доступ к прошлым участникам — только редакторы/админы
         read: isEditorOrAdmin,
         create: isEditorOrAdmin,
         update: isEditorOrAdmin,
@@ -199,7 +212,7 @@ module.exports = buildConfig({
       ],
     },
 
-    // Join submissions (email hook)
+    // Join submissions (отправка письма)
     {
       slug: 'joinSubmissions',
       labels: { singular: 'Join Submission', plural: 'Join Submissions' },
@@ -217,7 +230,8 @@ module.exports = buildConfig({
             if (operation !== 'create') return;
 
             try {
-              const nodemailer = require('nodemailer');
+              // динамический импорт, чтобы не тянуть модуль без надобности
+              const nodemailer = await import('nodemailer');
               const host = process.env.SMTP_HOST;
               const port = Number(process.env.SMTP_PORT || 587);
               const user = process.env.SMTP_USER;
@@ -234,23 +248,24 @@ module.exports = buildConfig({
                 port,
                 secure: port === 465,
                 auth: { user, pass },
-              });
+              } as any);
 
-              const data = doc?.payload || {};
+              const data = (doc as any)?.payload || {};
               const rows = Object.entries(data)
-                .map(([k, v]) =>
-                  `<tr><td><strong>${k}</strong></td><td>${
-                    typeof v === 'object'
-                      ? `<pre>${JSON.stringify(v, null, 2)}</pre>`
-                      : String(v || '')
-                  }</td></tr>`
+                .map(
+                  ([k, v]) =>
+                    `<tr><td><strong>${k}</strong></td><td>${
+                      typeof v === 'object'
+                        ? `<pre>${JSON.stringify(v, null, 2)}</pre>`
+                        : String(v ?? '')
+                    }</td></tr>`,
                 )
                 .join('');
 
               await transporter.sendMail({
                 from: `"PhE Website" <${user}>`,
                 to,
-                subject: data.subject || 'Join form',
+                subject: (data as any).subject || 'Join form',
                 html: `
                   <div style="font-family:system-ui,sans-serif">
                     <h2>Join Form Submission</h2>
@@ -262,7 +277,7 @@ module.exports = buildConfig({
               });
 
               console.log('📧 Email sent');
-            } catch (e) {
+            } catch (e: any) {
               console.error('📧 Email failed:', e?.message || e);
             }
           },
@@ -271,10 +286,11 @@ module.exports = buildConfig({
     },
   ],
 
+  // Плагины (если появятся — добавите сюда)
   plugins: [],
 
+  // Генерация типов (удобно в локалке)
   typescript: {
-    // Локально сгенерит типы
     outputFile: path.resolve(__dirname, './payload-types.ts'),
   },
 
