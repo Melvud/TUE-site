@@ -1,5 +1,6 @@
-// CommonJS-конфиг для CLI (payload migrate / payload serve)
-// ВАЖНО: не импортируем ESM-плагины с Top-Level Await (например, @payloadcms/richtext-lexical)
+// CommonJS-конфиг для CLI (payload migrate / payload serve).
+// Важно: не импортируем ESM-плагины с Top-Level Await (например, @payloadcms/richtext-lexical).
+// Чтобы не требовался editor, заменяем richText-поля на textarea только для CLI.
 
 const path = require('path');
 const { buildConfig } = require('payload');
@@ -21,7 +22,7 @@ module.exports = buildConfig({
 
   admin: { user: 'users', disable: false },
 
-  // editor: ...  <-- НЕ указываем явный редактор, чтобы не тянуть ESM-пакеты в CLI
+  // editor: ...  <-- не задаём, чтобы не подключать ESM-плагины в CLI
 
   db: postgresAdapter({
     pool: {
@@ -31,11 +32,7 @@ module.exports = buildConfig({
     migrationDir: path.resolve(__dirname, 'migrations'),
   }),
 
-  rateLimit: {
-    window: 60 * 1000,
-    max: 600,
-    trustProxy: true,
-  },
+  rateLimit: { window: 60 * 1000, max: 600, trustProxy: true },
 
   collections: [
     // Users
@@ -70,7 +67,7 @@ module.exports = buildConfig({
       fields: [{ name: 'alt', type: 'text' }, { name: 'caption', type: 'textarea' }],
     },
 
-    // Events
+    // Events (content: textarea вместо richText)
     {
       slug: 'events',
       labels: { singular: 'Event', plural: 'Events' },
@@ -82,7 +79,8 @@ module.exports = buildConfig({
         { name: 'date', type: 'text', required: true },
         { name: 'googleFormUrl', type: 'text' },
         { name: 'summary', type: 'textarea' },
-        { name: 'content', type: 'richText' },
+        // ⬇️ было: type: 'richText'
+        { name: 'content', type: 'textarea' },
         { name: 'published', type: 'checkbox', defaultValue: false },
         { name: 'latest', type: 'checkbox', defaultValue: false },
         { name: 'publishAt', type: 'date' },
@@ -90,7 +88,7 @@ module.exports = buildConfig({
       ],
     },
 
-    // News
+    // News (content: textarea вместо richText)
     {
       slug: 'news',
       labels: { singular: 'News', plural: 'News' },
@@ -102,7 +100,8 @@ module.exports = buildConfig({
         { name: 'date', type: 'date', required: true },
         { name: 'author', type: 'text' },
         { name: 'summary', type: 'textarea' },
-        { name: 'content', type: 'richText' },
+        // ⬇️ было: type: 'richText'
+        { name: 'content', type: 'textarea' },
         { name: 'published', type: 'checkbox', defaultValue: false },
         { name: 'publishAt', type: 'date' },
         { name: 'cover', type: 'upload', relationTo: 'media' },
@@ -144,7 +143,7 @@ module.exports = buildConfig({
       ],
     },
 
-    // Join submissions (email hook) — оставим, он не мешает CLI
+    // Join submissions (email hook)
     {
       slug: 'joinSubmissions',
       labels: { singular: 'Join Submission', plural: 'Join Submissions' },
