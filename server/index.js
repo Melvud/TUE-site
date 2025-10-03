@@ -38,10 +38,10 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
 
 (async () => {
   try {
-    const configPath = path.resolve(__dirname, 'payload.config.mjs');
+    const configPath = path.resolve(__dirname, 'payload.config.ts');
     console.log('➡️  Loading Payload config from:', configPath);
     if (!fs.existsSync(configPath)) {
-      throw new Error('payload.config.mjs missing in /server');
+      throw new Error('payload.config.ts missing in /server');
     }
 
     const rawDbUrl = process.env.DATABASE_URL || '';
@@ -58,7 +58,7 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
     const payloadConfig = cfgMod.default ?? cfgMod;
 
     if (!payloadConfig || typeof payloadConfig !== 'object') {
-      throw new Error('Invalid payload.config.mjs export');
+      throw new Error('Invalid payload.config.ts export');
     }
 
     console.log('🔧 Initializing Payload CMS...');

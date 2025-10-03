@@ -176,9 +176,6 @@ export interface Media {
 export interface Event {
   id: number;
   title: string;
-  /**
-   * Format: YYYY-MM-DD or YYYY-MM-DD..YYYY-MM-DD for range
-   */
   date: string;
   googleFormUrl?: string | null;
   summary?: string | null;
@@ -200,9 +197,6 @@ export interface Event {
   published?: boolean | null;
   latest?: boolean | null;
   publishAt?: string | null;
-  /**
-   * Event cover image
-   */
   cover?: (number | null) | Media;
   updatedAt: string;
   createdAt: string;
@@ -274,8 +268,6 @@ export interface MembersPast {
   createdAt: string;
 }
 /**
- * Form submissions from the Join Us page
- *
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "joinSubmissions".
  */

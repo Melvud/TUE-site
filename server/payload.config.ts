@@ -7,10 +7,9 @@ import { buildConfig } from 'payload';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ---- Роли и аксесс-helpers ----
-const ROLES = ['viewer', 'editor', 'admin'];
-const isAdmin = ({ req }) => req.user?.role === 'admin';
-const isEditorOrAdmin = ({ req }) => ['editor', 'admin'].includes(req.user?.role);
+const ROLES = ['viewer', 'editor', 'admin'] as const;
+const isAdmin = ({ req }: any) => req.user?.role === 'admin';
+const isEditorOrAdmin = ({ req }: any) => ['editor', 'admin'].includes(req.user?.role);
 
 export default buildConfig({
   secret: process.env.PAYLOAD_SECRET || 'dev-secret',
@@ -26,7 +25,6 @@ export default buildConfig({
     features: ({ defaultFeatures }) => defaultFeatures,
   }),
 
-  // БД (Postgres) с автоматическим созданием таблиц
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URL,
@@ -34,9 +32,6 @@ export default buildConfig({
         ? { rejectUnauthorized: false } 
         : undefined,
     },
-    // ⚠️ КРИТИЧЕСКИ ВАЖНО: включаем push для автоматического создания таблиц
-    push: process.env.NODE_ENV === 'production' ? false : true,
-    // Для первого деплоя временно включаем push даже в продакшене
     migrationDir: path.resolve(__dirname, 'migrations'),
   }),
 
@@ -47,7 +42,6 @@ export default buildConfig({
   },
 
   collections: [
-    // Users
     {
       slug: 'users',
       auth: {
@@ -56,7 +50,6 @@ export default buildConfig({
         cookies: { 
           sameSite: 'lax', 
           secure: process.env.NODE_ENV === 'production',
-          domain: undefined,
         },
       },
       admin: { 
@@ -81,7 +74,6 @@ export default buildConfig({
       ],
     },
 
-    // Media
     {
       slug: 'media',
       labels: { singular: 'Media', plural: 'Media' },
@@ -102,7 +94,6 @@ export default buildConfig({
       ],
     },
 
-    // Events
     {
       slug: 'events',
       labels: { singular: 'Event', plural: 'Events' },
@@ -110,10 +101,6 @@ export default buildConfig({
       admin: {
         useAsTitle: 'title',
         defaultColumns: ['title', 'date', 'published', 'updatedAt'],
-        preview: (doc) => {
-          const baseURL = process.env.SERVER_URL || 'http://localhost:3000';
-          return `${baseURL}/events/${doc?.id}`;
-        },
       },
       access: {
         read: () => true,
@@ -123,30 +110,17 @@ export default buildConfig({
       },
       fields: [
         { name: 'title', type: 'text', required: true },
-        { 
-          name: 'date', 
-          type: 'text', 
-          required: true,
-          admin: { 
-            description: 'Format: YYYY-MM-DD or YYYY-MM-DD..YYYY-MM-DD for range' 
-          } 
-        },
+        { name: 'date', type: 'text', required: true },
         { name: 'googleFormUrl', type: 'text' },
         { name: 'summary', type: 'textarea' },
-        { name: 'content', type: 'richText', required: false },
+        { name: 'content', type: 'richText' },
         { name: 'published', type: 'checkbox', defaultValue: false },
         { name: 'latest', type: 'checkbox', defaultValue: false },
         { name: 'publishAt', type: 'date' },
-        { 
-          name: 'cover', 
-          type: 'upload',
-          relationTo: 'media', 
-          admin: { description: 'Event cover image' } 
-        },
+        { name: 'cover', type: 'upload', relationTo: 'media' },
       ],
     },
 
-    // News
     {
       slug: 'news',
       labels: { singular: 'News', plural: 'News' },
@@ -154,10 +128,6 @@ export default buildConfig({
       admin: {
         useAsTitle: 'title',
         defaultColumns: ['title', 'date', 'published', 'updatedAt'],
-        preview: (doc) => {
-          const baseURL = process.env.SERVER_URL || 'http://localhost:3000';
-          return `${baseURL}/news/${doc?.id}`;
-        },
       },
       access: {
         read: () => true,
@@ -170,18 +140,13 @@ export default buildConfig({
         { name: 'date', type: 'date', required: true },
         { name: 'author', type: 'text' },
         { name: 'summary', type: 'textarea' },
-        { name: 'content', type: 'richText', required: false },
+        { name: 'content', type: 'richText' },
         { name: 'published', type: 'checkbox', defaultValue: false },
         { name: 'publishAt', type: 'date' },
-        { 
-          name: 'cover', 
-          type: 'upload',
-          relationTo: 'media' 
-        },
+        { name: 'cover', type: 'upload', relationTo: 'media' },
       ],
     },
 
-    // Members
     {
       slug: 'members',
       labels: { singular: 'Member', plural: 'Members' },
@@ -202,15 +167,10 @@ export default buildConfig({
         { name: 'email', type: 'email' },
         { name: 'linkedin', type: 'text' },
         { name: 'instagram', type: 'text' },
-        { 
-          name: 'photo', 
-          type: 'upload',
-          relationTo: 'media' 
-        },
+        { name: 'photo', type: 'upload', relationTo: 'media' },
       ],
     },
 
-    // Members Past
     {
       slug: 'membersPast',
       labels: { singular: 'Past Member', plural: 'Past Members' },
@@ -229,22 +189,14 @@ export default buildConfig({
         { name: 'email', type: 'email' },
         { name: 'linkedin', type: 'text' },
         { name: 'instagram', type: 'text' },
-        { 
-          name: 'photo', 
-          type: 'upload',
-          relationTo: 'media' 
-        },
+        { name: 'photo', type: 'upload', relationTo: 'media' },
       ],
     },
 
-    // Join submissions
     {
       slug: 'joinSubmissions',
       labels: { singular: 'Join Submission', plural: 'Join Submissions' },
-      admin: { 
-        useAsTitle: 'id',
-        description: 'Form submissions from the Join Us page',
-      },
+      admin: { useAsTitle: 'id' },
       access: {
         read: isAdmin,
         create: () => true,
@@ -256,7 +208,7 @@ export default buildConfig({
       ],
       hooks: {
         afterChange: [
-          async ({ doc, operation }) => {
+          async ({ doc, operation }: any) => {
             if (operation !== 'create') return;
             
             try {
@@ -268,7 +220,7 @@ export default buildConfig({
               const to = process.env.EMAIL_TO || 'ivsilan2005@gmail.com';
               
               if (!host || !user || !pass) {
-                console.warn('📧 SMTP not configured, skipping email');
+                console.warn('📧 SMTP not configured');
                 return;
               }
 
@@ -280,7 +232,6 @@ export default buildConfig({
               });
 
               const data = doc?.payload || {};
-              const subject = data.subject || 'Join form submission';
               const rows = Object.entries(data)
                 .map(([k, v]) =>
                   `<tr><td><strong>${k}</strong></td><td>${
@@ -294,10 +245,7 @@ export default buildConfig({
               await transporter.sendMail({
                 from: `"PhE Website" <${user}>`,
                 to,
-                subject,
-                text: Object.entries(data)
-                  .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
-                  .join('\n'),
+                subject: data.subject || 'Join form',
                 html: `
                   <div style="font-family:system-ui,sans-serif">
                     <h2>Join Form Submission</h2>
@@ -308,9 +256,9 @@ export default buildConfig({
                 `,
               });
               
-              console.log('📧 Email sent successfully');
-            } catch (e) {
-              console.error('📧 Email hook failed:', e.message);
+              console.log('📧 Email sent');
+            } catch (e: any) {
+              console.error('📧 Email failed:', e.message);
             }
           },
         ],

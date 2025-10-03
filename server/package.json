@@ -5,8 +5,7 @@
     "type": "commonjs",
     "scripts": {
       "start": "node index.js",
-      "dev": "NODE_ENV=development node index.js",
-      "migrate": "payload migrate"
+      "dev": "NODE_ENV=development node index.js"
     },
     "dependencies": {
       "@aws-sdk/client-s3": "^3.615.0",
@@ -24,6 +23,8 @@
       "nodemailer": "^6.9.8"
     },
     "devDependencies": {
-      "nodemon": "^3.1.10"
+      "@types/node": "^22.14.0",
+      "nodemon": "^3.1.10",
+      "typescript": "^5.8.2"
     }
   }
