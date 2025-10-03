@@ -8,15 +8,16 @@ import { lexicalEditor } from '@payloadcms/richtext-lexical'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+/** Роли и утилиты доступа */
 const ROLES = ['viewer', 'editor', 'admin']
 const isAdmin = ({ req }) => req?.user?.role === 'admin'
-const isEditorOrAdmin = ({ req }) => (req?.user?.role === 'editor' || req?.user?.role === 'admin')
+const isEditorOrAdmin = ({ req }) => req?.user?.role === 'editor' || req?.user?.role === 'admin'
 
-// домен приложения (для CORS/CSRF). На Render это твой прод-домен:
+/** Базовый URL приложения (тот же домен на Render) */
 const APP_URL = process.env.SERVER_URL || 'http://localhost:3000'
 
 export default buildConfig({
-  // ===== БАЗА =====
+  /** ========= БАЗА ДАННЫХ ========= */
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URL,
@@ -25,35 +26,43 @@ export default buildConfig({
     migrationDir: path.resolve(__dirname, 'migrations'),
   }),
 
-  // ===== АДМИНКА =====
+  /** ========= АДМИНКА ========= */
   admin: {
     user: 'users',
-    // оставляем /admin по умолчанию (совпадает с файловой структурой)
-    importMap: { baseDir: path.resolve(__dirname) },
-    // можно добавить titleSuffix, logo и т.д. по желанию
+    importMap: {
+      baseDir: path.resolve(__dirname),
+    },
+    // при желании можно добавить meta/logo/brandColor
   },
 
-  // ===== БЕЗОПАСНОСТЬ (важно для 403/пустого экрана) =====
-  // Разрешаем запросы с того же домена (Render), и корректный CSRF
+  /** ========= БЕЗОПАСНОСТЬ =========
+   * На одном домене CSRF избыточен и может вызывать 403 → отключаем.
+   * CORS в режиме same-origin (для порядка укажем APP_URL).
+   * Cookies — SameSite=Lax, secure в проде.
+   */
+  csrf: false,
   cors: {
     origins: [APP_URL],
     credentials: true,
   },
-  csrf: [APP_URL],
-
-  // Куки для prod
-  // (в проде secure=true; sameSite=lax из коробки хорошо работает на одном домене)
   cookiePrefix: 'p_',
   serverURL: APP_URL,
   secret: process.env.PAYLOAD_SECRET || 'dev-secret',
   telemetry: false,
 
-  // ===== EDITOR =====
+  /** ========= РЕДАКТОР ========= */
   editor: lexicalEditor(),
 
-  // ===== КОЛЛЕКЦИИ =====
+  /** ========= РЕЙТЛИМИТ (необязательно, но полезно) ========= */
+  rateLimit: {
+    window: 60 * 1000,
+    max: 600,
+    trustProxy: true,
+  },
+
+  /** ========= КОЛЛЕКЦИИ ========= */
   collections: [
-    // --- USERS (AUTH) ---
+    /** USERS (AUTH) */
     {
       slug: 'users',
       auth: {
@@ -62,11 +71,8 @@ export default buildConfig({
         cookies: { sameSite: 'lax', secure: process.env.NODE_ENV === 'production' },
       },
       admin: { useAsTitle: 'email', defaultColumns: ['email', 'name', 'role'] },
-      // !!! ВАЖНО !!!
-      // Не делаем публичного чтения пользователей, но и не блокируем загрузку админки:
-      // create/update/delete — только админ. read тоже ограничен (как и было).
       access: {
-        read: isEditorOrAdmin,
+        read: isEditorOrAdmin,   // список пользователей не публичный
         create: isAdmin,
         update: isAdmin,
         delete: isAdmin,
@@ -83,7 +89,7 @@ export default buildConfig({
       ],
     },
 
-    // --- MEDIA ---
+    /** MEDIA */
     {
       slug: 'media',
       labels: { singular: 'Media', plural: 'Media' },
@@ -93,29 +99,32 @@ export default buildConfig({
       },
       admin: { useAsTitle: 'filename' },
       access: {
-        read: () => true,               // публично
+        read: () => true,        // публично
         create: isEditorOrAdmin,
         update: isEditorOrAdmin,
         delete: isEditorOrAdmin,
       },
-      fields: [{ name: 'alt', type: 'text' }, { name: 'caption', type: 'textarea' }],
+      fields: [
+        { name: 'alt', type: 'text' },
+        { name: 'caption', type: 'textarea' },
+      ],
     },
 
-    // --- EVENTS ---
+    /** EVENTS */
     {
       slug: 'events',
       labels: { singular: 'Event', plural: 'Events' },
       versions: { drafts: true, maxPerDoc: 20 },
       admin: { useAsTitle: 'title', defaultColumns: ['title', 'date', 'published', 'updatedAt'] },
       access: {
-        read: () => true,               // публично
+        read: () => true,        // публично
         create: isEditorOrAdmin,
         update: isEditorOrAdmin,
         delete: isEditorOrAdmin,
       },
       fields: [
         { name: 'title', type: 'text', required: true },
-        { name: 'date', type: 'text', required: true },
+        { name: 'date', type: 'text', required: true }, // как в твоём фронте
         { name: 'googleFormUrl', type: 'text' },
         { name: 'summary', type: 'textarea' },
         { name: 'content', type: 'richText' },
@@ -126,14 +135,14 @@ export default buildConfig({
       ],
     },
 
-    // --- NEWS ---
+    /** NEWS */
     {
       slug: 'news',
       labels: { singular: 'News', plural: 'News' },
       versions: { drafts: true, maxPerDoc: 20 },
       admin: { useAsTitle: 'title', defaultColumns: ['title', 'date', 'published', 'updatedAt'] },
       access: {
-        read: () => true,               // публично
+        read: () => true,        // публично
         create: isEditorOrAdmin,
         update: isEditorOrAdmin,
         delete: isEditorOrAdmin,
@@ -150,13 +159,13 @@ export default buildConfig({
       ],
     },
 
-    // --- MEMBERS ---
+    /** MEMBERS (текущий состав) */
     {
       slug: 'members',
       labels: { singular: 'Member', plural: 'Members' },
       admin: { useAsTitle: 'name', defaultColumns: ['name', 'role', 'order'] },
       access: {
-        read: () => true,               // публично
+        read: () => true,        // публично
         create: isEditorOrAdmin,
         update: isEditorOrAdmin,
         delete: isEditorOrAdmin,
@@ -172,13 +181,13 @@ export default buildConfig({
       ],
     },
 
-    // --- MEMBERS PAST ---
+    /** MEMBERS PAST (выпускники) */
     {
       slug: 'membersPast',
       labels: { singular: 'Past Member', plural: 'Past Members' },
       admin: { useAsTitle: 'name' },
       access: {
-        read: () => true,               // публично (или ужесточить при необходимости)
+        read: () => true,        // публично (при желании можно ужесточить)
         create: isEditorOrAdmin,
         update: isEditorOrAdmin,
         delete: isEditorOrAdmin,
@@ -195,18 +204,20 @@ export default buildConfig({
       ],
     },
 
-    // --- JOIN SUBMISSIONS ---
+    /** JOIN SUBMISSIONS (форма вступления с почтовым хуком) */
     {
       slug: 'joinSubmissions',
       labels: { singular: 'Join Submission', plural: 'Join Submissions' },
       admin: { useAsTitle: 'id' },
       access: {
-        read: isAdmin,
-        create: () => true,            // публичная отправка формы
+        read: isAdmin,           // приватно
+        create: () => true,      // публичная отправка
         update: isAdmin,
         delete: isAdmin,
       },
-      fields: [{ name: 'payload', type: 'json', required: true }],
+      fields: [
+        { name: 'payload', type: 'json', required: true },
+      ],
       hooks: {
         afterChange: [
           async ({ doc, operation }) => {
@@ -254,7 +265,7 @@ export default buildConfig({
     },
   ],
 
-  // ===== TYPES =====
-  typescript: { outputFile: path.resolve(__dirname, './payload-types.ts') },
+  /** ========= GRAPHQL / TYPES ========= */
   graphQL: { disable: false },
+  typescript: { outputFile: path.resolve(__dirname, './payload-types.ts') },
 })
