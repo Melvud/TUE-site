@@ -4,11 +4,11 @@ import { buildConfig } from 'payload';
 import { postgresAdapter } from '@payloadcms/db-postgres';
 import { lexicalEditor } from '@payloadcms/richtext-lexical';
 
-// __dirname для ESM/TS
+// __dirname для ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Без TS-типов / "as const"
+// Без TS-типов
 const ROLES = ['viewer', 'editor', 'admin'];
 
 const isAdmin = ({ req }) => req && req.user && req.user.role === 'admin';
@@ -18,7 +18,6 @@ const isEditorOrAdmin = ({ req }) => {
 };
 
 export default buildConfig({
-  // Задайте PAYLOAD_SECRET и SERVER_URL в проде
   secret: process.env.PAYLOAD_SECRET || 'dev-secret',
   serverURL: process.env.SERVER_URL || 'http://localhost:3000',
   telemetry: false,
@@ -35,9 +34,10 @@ export default buildConfig({
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_SSL === 'true'
-        ? { rejectUnauthorized: false }
-        : undefined,
+      ssl:
+        process.env.DATABASE_SSL === 'true'
+          ? { rejectUnauthorized: false }
+          : undefined,
     },
     migrationDir: path.resolve(__dirname, 'migrations'),
   }),
@@ -54,7 +54,7 @@ export default buildConfig({
       slug: 'users',
       auth: {
         useAPIKey: false,
-        tokenExpiration: 7200, // 2h
+        tokenExpiration: 7200,
         cookies: {
           sameSite: 'lax',
           secure: process.env.NODE_ENV === 'production',
@@ -120,7 +120,7 @@ export default buildConfig({
       },
       fields: [
         { name: 'title', type: 'text', required: true },
-        // в вашем проекте хранится как текст
+        // в проекте хранится как текст
         { name: 'date', type: 'text', required: true },
         { name: 'googleFormUrl', type: 'text' },
         { name: 'summary', type: 'textarea' },
@@ -225,8 +225,10 @@ export default buildConfig({
             if (operation !== 'create') return;
 
             try {
-              // динамический импорт — ок в ESM
-              const nodemailer = await import('nodemailer');
+              // Совместимо с CJS/ESM: default или именованный экспорт
+              const nm = await import('nodemailer');
+              const nodemailer = nm.default || nm;
+
               const host = process.env.SMTP_HOST;
               const port = Number(process.env.SMTP_PORT || 587);
               const user = process.env.SMTP_USER;
@@ -238,7 +240,7 @@ export default buildConfig({
                 return;
               }
 
-              const transporter = (nodemailer as any).createTransport({
+              const transporter = nodemailer.createTransport({
                 host,
                 port,
                 secure: port === 465,
@@ -259,7 +261,7 @@ export default buildConfig({
               await transporter.sendMail({
                 from: `"PhE Website" <${user}>`,
                 to,
-                subject: (data && (data as any).subject) || 'Join form',
+                subject: (data && data.subject) || 'Join form',
                 html: `
                   <div style="font-family:system-ui,sans-serif">
                     <h2>Join Form Submission</h2>
@@ -272,7 +274,7 @@ export default buildConfig({
 
               console.log('📧 Email sent');
             } catch (e) {
-              const msg = (e && (e as any).message) || String(e);
+              const msg = (e && e.message) || String(e);
               console.error('📧 Email failed:', msg);
             }
           },
@@ -284,7 +286,6 @@ export default buildConfig({
   plugins: [],
 
   typescript: {
-    // Генерация типов при локальной разработке (не мешает на проде)
     outputFile: path.resolve(__dirname, './payload-types.ts'),
   },
 
