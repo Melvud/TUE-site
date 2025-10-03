@@ -33,13 +33,11 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d', immutable: true }));
 
-// Health check
+// Health check ПЕРЕД Payload
 app.get('/health', (_req, res) => res.status(200).send('ok'));
 
 // 🔍 Проверка БД
 async function checkDatabase() {
-  console.log('\n🔍 Checking database...\n');
-  
   const client = new Client({
     connectionString: process.env.DATABASE_URL,
     ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
@@ -47,27 +45,12 @@ async function checkDatabase() {
 
   try {
     await client.connect();
-    const result = await client.query(`
-      SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
-    `);
-
-    console.log(`✅ Database OK (${result.rows.length} tables)`);
-
-    const requiredTables = ['users', 'events', 'news', 'members', 'media'];
-    const existingTables = result.rows.map(r => r.tablename);
-    const missing = requiredTables.filter(t => !existingTables.includes(t));
-
-    if (missing.length > 0) {
-      console.error('❌ Missing tables:', missing.join(', '));
-      throw new Error('Database schema incomplete');
-    }
-
-    console.log('✅ All required tables exist\n');
-  } catch (err) {
-    console.error('❌ Database check failed:', err.message);
-    throw err;
-  } finally {
+    const result = await client.query(`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`);
+    console.log(`✅ Database OK (${result.rows.length} tables)\n`);
     await client.end();
+  } catch (err) {
+    console.error('❌ Database failed:', err.message);
+    throw err;
   }
 }
 
@@ -80,7 +63,7 @@ async function checkDatabase() {
     const jsPath  = path.resolve(__dirname, 'payload.config.js');
     const configPath = fs.existsSync(mjsPath) ? mjsPath : jsPath;
 
-    console.log('➡️  Loading Payload config from:', configPath);
+    console.log('➡️  Loading config:', configPath);
 
     const payloadMod = await import('payload');
     const payload = payloadMod.default ?? payloadMod;
@@ -88,15 +71,35 @@ async function checkDatabase() {
     const cfgMod = await import(configPath + `?t=${Date.now()}`);
     const payloadConfig = cfgMod.default ?? cfgMod;
 
+    // 🔍 ПРОВЕРЯЕМ КОНФИГ ПЕРЕД ИНИЦИАЛИЗАЦИЕЙ
+    console.log('\n🔍 Payload config check:');
+    console.log('  serverURL:', payloadConfig.serverURL);
+    console.log('  admin.disable:', payloadConfig.admin?.disable);
+    console.log('  admin.user:', payloadConfig.admin?.user);
+    
+    if (payloadConfig.routes) {
+      console.log('  routes.api:', payloadConfig.routes.api);
+      console.log('  routes.admin:', payloadConfig.routes.admin);
+    } else {
+      console.log('  routes: (using defaults)');
+    }
+    console.log('');
+
+    if (payloadConfig.admin?.disable === true) {
+      console.error('❌ CRITICAL: admin.disable = true in config!');
+      console.error('   This prevents admin panel from loading.');
+      console.error('   Set admin.disable = false in payload.config.mjs\n');
+    }
+
     console.log('🔧 Initializing Payload CMS...');
     
-    // 🔥 НОВЫЙ ПОДХОД: НЕ передаём express app
-    const payloadInstance = await payload.init({
+    // 🔥 ВОЗВРАЩАЕМ express: app
+    await payload.init({
       secret: process.env.PAYLOAD_SECRET || 'dev-secret',
+      express: app,  // ← ВОЗВРАЩАЕМ!
       config: payloadConfig,
-      // express: app, ← НЕ ПЕРЕДАЁМ!
       onInit: async (instance) => {
-        console.log('✅ Payload CMS initialized');
+        console.log('✅ Payload initialized');
 
         const email = process.env.PAYLOAD_SEED_ADMIN_EMAIL;
         const pass = process.env.PAYLOAD_SEED_ADMIN_PASSWORD;
@@ -125,36 +128,82 @@ async function checkDatabase() {
       },
     });
 
-    // 🔥 ВРУЧНУЮ монтируем Payload middleware
-    console.log('🔧 Mounting Payload routes manually...');
-    
-    // Payload создаёт собственный Express app внутри
-    if (payloadInstance.express) {
-      app.use(payloadInstance.express);
-      console.log('✅ Payload routes mounted via instance.express');
-    } else {
-      console.error('❌ payloadInstance.express is undefined!');
-      console.error('   Payload version might be incompatible');
-      console.error('   Trying alternative approach...');
-      
-      // Альтернатива: используем getAdminURL и getAPIURL
-      const adminURL = payloadInstance.getAdminURL ? payloadInstance.getAdminURL() : '/admin';
-      const apiURL = payloadInstance.getAPIURL ? payloadInstance.getAPIURL() : '/api';
-      
-      console.log(`   Admin URL: ${adminURL}`);
-      console.log(`   API URL: ${apiURL}`);
-    }
+    console.log('✅ Payload init completed\n');
 
-    // Upload endpoint
+    // Upload endpoint ПОСЛЕ Payload
     app.post('/api/upload-local', upload.single('file'), (req, res) => {
       if (!req.file) return res.status(400).json({ error: 'No file' });
       res.json({ url: `/uploads/${req.file.filename}` });
     });
 
-    // Фронтенд (SPA)
+    // 🔍 ДЕТАЛЬНАЯ ПРОВЕРКА РОУТОВ
+    console.log('🔍 Checking Express routes...\n');
+    
+    const allRoutes = [];
+    
+    function extractRoutes(stack, prefix = '') {
+      stack.forEach((layer) => {
+        if (layer.route) {
+          // Прямой роут
+          const methods = Object.keys(layer.route.methods).join(',').toUpperCase();
+          const fullPath = prefix + layer.route.path;
+          allRoutes.push({ methods, path: fullPath, type: 'route' });
+        } else if (layer.name === 'router' && layer.handle.stack) {
+          // Вложенный router
+          const routerPath = layer.regexp.source
+            .replace('\\/?', '')
+            .replace('(?=\\/|$)', '')
+            .replace(/\\/g, '')
+            .replace('^', '');
+          
+          extractRoutes(layer.handle.stack, routerPath);
+        } else if (layer.name === 'bound dispatch') {
+          // Payload может использовать этот тип
+          const routerPath = layer.regexp ? layer.regexp.source
+            .replace('\\/?', '')
+            .replace('(?=\\/|$)', '')
+            .replace(/\\/g, '')
+            .replace('^', '') : '';
+          
+          if (routerPath) {
+            allRoutes.push({ methods: 'ALL', path: routerPath, type: 'middleware' });
+          }
+        }
+      });
+    }
+    
+    extractRoutes(app._router.stack);
+    
+    console.log('📍 All registered routes:');
+    allRoutes.forEach(r => {
+      console.log(`  [${r.type}] ${r.methods} ${r.path}`);
+    });
+    
+    const adminRoutes = allRoutes.filter(r => r.path.includes('admin'));
+    const apiRoutes = allRoutes.filter(r => r.path.includes('api'));
+    
+    console.log(`\n  Total: ${allRoutes.length} routes`);
+    console.log(`  Admin: ${adminRoutes.length > 0 ? '✅' : '❌'} (${adminRoutes.length} routes)`);
+    console.log(`  API: ${apiRoutes.length > 0 ? '✅' : '❌'} (${apiRoutes.length} routes)`);
+    console.log('');
+
+    if (adminRoutes.length === 0) {
+      console.error('❌ CRITICAL: No /admin routes found!');
+      console.error('   Possible causes:');
+      console.error('   1. admin.disable = true in config');
+      console.error('   2. Payload version incompatibility');
+      console.error('   3. Config not loading correctly\n');
+    }
+
+    if (apiRoutes.length === 0) {
+      console.error('⚠️  WARNING: No /api routes found!');
+      console.error('   Collections may not be accessible via REST API\n');
+    }
+
+    // Фронтенд (SPA) - ТОЛЬКО после Payload
     const distPath = path.resolve(projectRoot, 'dist');
 
-    // Статика (только НЕ для /api и /admin)
+    // Статика (НЕ для /api и /admin)
     app.use((req, res, next) => {
       if (req.path.startsWith('/api') || req.path.startsWith('/admin')) {
         return next();
@@ -176,37 +225,6 @@ async function checkDatabase() {
       }
     });
 
-    // 🔍 Проверяем зарегистрированные роуты
-    console.log('\n📍 Registered routes:');
-    let routeCount = 0;
-    let adminFound = false;
-    let apiFound = false;
-
-    app._router.stack.forEach((layer) => {
-      if (layer.route) {
-        routeCount++;
-        const path = layer.route.path;
-        console.log(`  ${Object.keys(layer.route.methods).join(',').toUpperCase()} ${path}`);
-        if (path.includes('admin')) adminFound = true;
-        if (path.includes('api')) apiFound = true;
-      } else if (layer.name === 'router') {
-        layer.handle.stack.forEach((r) => {
-          if (r.route) {
-            routeCount++;
-            const path = r.route.path;
-            console.log(`  ${Object.keys(r.route.methods).join(',').toUpperCase()} ${path}`);
-            if (path.includes('admin')) adminFound = true;
-            if (path.includes('api')) apiFound = true;
-          }
-        });
-      }
-    });
-
-    console.log(`\n  Total routes: ${routeCount}`);
-    console.log(`  Admin routes: ${adminFound ? '✅' : '❌'}`);
-    console.log(`  API routes: ${apiFound ? '✅' : '❌'}`);
-    console.log('');
-
     // Запуск сервера
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, '0.0.0.0', () => {
@@ -214,13 +232,11 @@ async function checkDatabase() {
       console.log(`   Server: http://0.0.0.0:${PORT}`);
       console.log('🚀 ═══════════════════════════════════════════════');
       console.log('');
-      console.log('📍 Admin: /admin');
-      console.log('📍 API: /api');
-      console.log('📍 Health: /health');
+      console.log('📍 Admin Panel: /admin');
+      console.log('📍 REST API: /api');
+      console.log('📍 Health Check: /health');
       console.log('');
-      console.log('🔐 Login:');
-      console.log(`   ${process.env.PAYLOAD_SEED_ADMIN_EMAIL || 'admin@tue.nl'}`);
-      console.log(`   ${process.env.PAYLOAD_SEED_ADMIN_PASSWORD || '[password]'}`);
+      console.log('🔐 Login: admin@tue.nl');
       console.log('');
     });
 

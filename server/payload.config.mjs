@@ -23,19 +23,13 @@ export default buildConfig({
   serverURL: process.env.SERVER_URL || 'http://localhost:3000',
   telemetry: false,
 
-  // 🔥 КРИТИЧНО: admin должна быть включена с явным путем!
+  // 🔥 КРИТИЧНО: admin НЕ должна быть отключена!
   admin: { 
     user: 'users',
-    disable: false,
+    disable: false,  // ← ОБЯЗАТЕЛЬНО false!
     meta: {
       titleSuffix: '- PhE Admin',
     },
-  },
-  
-  // 🔥 ВАЖНО: Явно указываем базовые пути
-  routes: {
-    api: '/api',
-    admin: '/admin',
   },
 
   // Полноценный Lexical‑редактор для richText‑полей
