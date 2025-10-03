@@ -116,6 +116,16 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
 
     console.log('✅ Payload routes mounted at /api and /admin');
 
+    // 🔥 ВАЖНО: Убедимся что /admin и /admin/ оба работают
+    // (Payload может монтировать только один из вариантов)
+    app.use((req, res, next) => {
+      // Если запрос к /admin без слеша - добавляем слеш
+      if (req.path === '/admin') {
+        return res.redirect(301, '/admin/');
+      }
+      next();
+    });
+
     // Upload endpoint (если нужен дополнительно)
     app.post('/api/upload-local', upload.single('file'), (req, res) => {
       if (!req.file) return res.status(400).json({ error: 'No file' });
@@ -128,19 +138,33 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
     // 🔥 КРИТИЧНО: Статика и SPA fallback ТОЛЬКО для НЕ-API путей
     // Payload уже обработал /api и /admin выше, поэтому эти запросы сюда не дойдут
     
-    // Отдаём статические файлы (JS, CSS, images)
-    app.use(express.static(distPath, { 
-      index: false,  // НЕ автоматически отдавать index.html
-      maxAge: '1d',
-      setHeaders: (res, filePath) => {
-        if (filePath.endsWith('.html')) {
-          res.setHeader('Cache-Control', 'no-cache');
-        }
+    // Отдаём статические файлы (JS, CSS, images), но НЕ для /api и /admin
+    app.use((req, res, next) => {
+      // Пропускаем Payload роуты
+      if (req.path.startsWith('/api') || req.path.startsWith('/admin')) {
+        return next();
       }
-    }));
+      // Для остальных пробуем отдать статику
+      express.static(distPath, { 
+        index: false,  // НЕ автоматически отдавать index.html
+        maxAge: '1d',
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache');
+          }
+        }
+      })(req, res, next);
+    });
 
     // SPA fallback для всех остальных путей
-    app.get('*', (req, res) => {
+    // 🔥 КРИТИЧНО: НЕ перехватываем /api и /admin - они уже обработаны Payload
+    app.get('*', (req, res, next) => {
+      // Если путь начинается с /api или /admin - пропускаем
+      if (req.path.startsWith('/api') || req.path.startsWith('/admin')) {
+        return next();
+      }
+      
+      // Для всех остальных путей отдаём index.html
       const indexFile = path.join(distPath, 'index.html');
       if (fs.existsSync(indexFile)) {
         res.sendFile(indexFile);

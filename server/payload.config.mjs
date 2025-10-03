@@ -23,7 +23,13 @@ export default buildConfig({
   serverURL: process.env.SERVER_URL || 'http://localhost:3000',
   telemetry: false,
 
-  admin: { user: 'users', disable: false },
+  // 🔥 КРИТИЧНО: admin должна быть включена!
+  admin: { 
+    user: 'users', 
+    disable: false,  // ← ДОЛЖНО БЫТЬ false!
+    // 🔥 ВАЖНО: можно добавить явный путь
+    // Но по умолчанию Payload использует '/admin'
+  },
 
   // Полноценный Lexical‑редактор для richText‑полей
   editor: lexicalEditor({
@@ -254,7 +260,6 @@ export default buildConfig({
   plugins: [],
 
   typescript: {
-    // Генерация типов только в локальной разработке
     outputFile: path.resolve(__dirname, './payload-types.ts'),
   },
 
