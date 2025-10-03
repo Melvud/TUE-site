@@ -13,14 +13,17 @@ const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', true);
 
+// Рабочая директория — корень проекта (../ от папки server)
 const projectRoot = path.resolve(__dirname, '..');
 process.chdir(projectRoot);
 console.log('📁 CWD set to:', process.cwd());
 
+// Базовая конфигурация Express
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Локальная загрузка файлов
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 const storage = multer.diskStorage({
@@ -34,38 +37,29 @@ app.post('/api/upload-local', upload.single('file'), (req, res) => {
   res.json({ url: `/uploads/${req.file.filename}` });
 });
 
+// Служебный роут для проверки здоровья
 app.get('/health', (_req, res) => res.status(200).send('ok'));
 
+// Инициализация Payload и настройка роутинга
 (async () => {
   try {
-    // Порядок: .mjs -> .ts
+    // Выбираем .mjs‑конфиг для рантайма; при его отсутствии fallback на .js
     const mjsPath = path.resolve(__dirname, 'payload.config.mjs');
-    const tsPath  = path.resolve(__dirname, 'payload.config.ts');
+    const jsPath  = path.resolve(__dirname, 'payload.config.js');
+    const configPath = fs.existsSync(mjsPath) ? mjsPath : jsPath;
+    if (!configPath) throw new Error('No Payload config found in /server');
 
-    const configPath = fs.existsSync(mjsPath) ? mjsPath : tsPath;
-    console.log('➡️  Loading Payload config from:', configPath || '(not found)');
-    if (!configPath) throw new Error('payload.config.mjs/ts missing in /server');
+    console.log('➡️  Loading Payload config from:', configPath);
 
-    const rawDbUrl = process.env.DATABASE_URL || '';
-    try {
-      const { hostname } = new URL(rawDbUrl);
-      console.log('🗄️  Postgres host:', hostname || '(empty)');
-    } catch {
-      console.warn('⚠️  DATABASE_URL is not a valid URL or empty');
-    }
-
+    // Динамический импорт Payload (работает как с CJS, так и с ESM)
     const payloadMod = await import('payload');
     const payload = payloadMod.default ?? payloadMod;
 
+    // Загружаем конфиг (поддерживает .mjs и .js)
     const cfgMod = await import(configPath + `?t=${Date.now()}`);
     const payloadConfig = cfgMod.default ?? cfgMod;
 
-    if (!payloadConfig || typeof payloadConfig !== 'object') {
-      throw new Error('Invalid payload config export');
-    }
-
     console.log('🔧 Initializing Payload CMS...');
-
     await payload.init({
       secret: process.env.PAYLOAD_SECRET || 'dev-secret',
       express: app,
@@ -73,6 +67,7 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
       onInit: async (payloadInstance) => {
         console.log('✅ Payload CMS initialized');
 
+        // Создание админа при первом старте (опционально)
         const email = process.env.PAYLOAD_SEED_ADMIN_EMAIL;
         const pass = process.env.PAYLOAD_SEED_ADMIN_PASSWORD;
         if (email && pass) {
@@ -91,8 +86,8 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
             } else {
               console.log(`👤 Admin already exists: ${email}`);
             }
-          } catch (e) {
-            console.error('❌ Seed admin failed:', e.message);
+          } catch (err) {
+            console.error('❌ Seed admin failed:', err.message);
           }
         }
       },
@@ -100,26 +95,38 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
 
     console.log('✅ Payload routes mounted');
 
+    // Путь к собранному фронтенду (Vite)
     const distPath = path.resolve(projectRoot, 'dist');
-    if (!fs.existsSync(distPath)) console.warn('⚠️  dist folder not found');
 
+    // Отдаём статику только для путей, которые не начинаются с /api или /admin
     app.use((req, res, next) => {
-      if (req.path.startsWith('/api') || req.path.startsWith('/admin')) return next();
+      const url = req.path;
+      if (url.startsWith('/api') || url.startsWith('/admin')) {
+        return next();
+      }
       express.static(distPath, { index: false, maxAge: '1d' })(req, res, next);
     });
 
+    // SPA‑fallback: для любого другого пути возвращаем index.html
     app.get('*', (req, res, next) => {
-      if (req.path.startsWith('/api') || req.path.startsWith('/admin')) return next();
-      const indexPath = path.join(distPath, 'index.html');
-      if (fs.existsSync(indexPath)) res.sendFile(indexPath);
-      else res.status(404).send('Frontend not built');
+      const url = req.path;
+      if (url.startsWith('/api') || url.startsWith('/admin')) {
+        return next();
+      }
+      const indexFile = path.join(distPath, 'index.html');
+      if (fs.existsSync(indexFile)) {
+        res.sendFile(indexFile);
+      } else {
+        res.status(404).send('Frontend not built');
+      }
     });
 
+    // Запуск сервера на PORT из окружения (Render задаёт PORT автоматически)
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, '0.0.0.0', () => {
-      console.log(`\n🚀 Server: http://0.0.0.0:${PORT}`);
+      console.log(`🚀 Server: http://0.0.0.0:${PORT}`);
       console.log(`📍 Admin: /admin`);
-      console.log(`📍 API: /api\n`);
+      console.log(`📍 API: /api`);
     });
 
   } catch (err) {

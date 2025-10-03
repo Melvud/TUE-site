@@ -8,9 +8,10 @@ import { lexicalEditor } from '@payloadcms/richtext-lexical';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// никаких TS-типов здесь!
+// Роли для селекта
 const ROLES = ['viewer', 'editor', 'admin'];
 
+// Проверки доступа
 const isAdmin = ({ req }) => req?.user?.role === 'admin';
 const isEditorOrAdmin = ({ req }) => {
   const role = req?.user?.role;
@@ -24,7 +25,7 @@ export default buildConfig({
 
   admin: { user: 'users', disable: false },
 
-  // полноценный редактор для админки
+  // Полноценный Lexical‑редактор для richText‑полей
   editor: lexicalEditor({
     features: ({ defaultFeatures }) => defaultFeatures,
   }),
@@ -40,7 +41,6 @@ export default buildConfig({
   rateLimit: { window: 60 * 1000, max: 600, trustProxy: true },
 
   collections: [
-    // Users
     {
       slug: 'users',
       auth: {
@@ -70,7 +70,6 @@ export default buildConfig({
       ],
     },
 
-    // Media
     {
       slug: 'media',
       labels: { singular: 'Media', plural: 'Media' },
@@ -91,7 +90,7 @@ export default buildConfig({
       ],
     },
 
-    // Events — с richText
+    // Events
     {
       slug: 'events',
       labels: { singular: 'Event', plural: 'Events' },
@@ -108,11 +107,10 @@ export default buildConfig({
       },
       fields: [
         { name: 'title', type: 'text', required: true },
-        // у вас это поле хранится строкой
         { name: 'date', type: 'text', required: true },
         { name: 'googleFormUrl', type: 'text' },
         { name: 'summary', type: 'textarea' },
-        { name: 'content', type: 'richText' }, // полноценный редактор
+        { name: 'content', type: 'richText' },
         { name: 'published', type: 'checkbox', defaultValue: false },
         { name: 'latest', type: 'checkbox', defaultValue: false },
         { name: 'publishAt', type: 'date' },
@@ -120,7 +118,7 @@ export default buildConfig({
       ],
     },
 
-    // News — с richText
+    // News
     {
       slug: 'news',
       labels: { singular: 'News', plural: 'News' },
@@ -140,14 +138,13 @@ export default buildConfig({
         { name: 'date', type: 'date', required: true },
         { name: 'author', type: 'text' },
         { name: 'summary', type: 'textarea' },
-        { name: 'content', type: 'richText' }, // полноценный редактор
+        { name: 'content', type: 'richText' },
         { name: 'published', type: 'checkbox', defaultValue: false },
         { name: 'publishAt', type: 'date' },
         { name: 'cover', type: 'upload', relationTo: 'media' },
       ],
     },
 
-    // Members
     {
       slug: 'members',
       labels: { singular: 'Member', plural: 'Members' },
@@ -169,7 +166,6 @@ export default buildConfig({
       ],
     },
 
-    // MembersPast
     {
       slug: 'membersPast',
       labels: { singular: 'Past Member', plural: 'Past Members' },
@@ -192,7 +188,6 @@ export default buildConfig({
       ],
     },
 
-    // Join submissions
     {
       slug: 'joinSubmissions',
       labels: { singular: 'Join Submission', plural: 'Join Submissions' },
@@ -221,14 +216,22 @@ export default buildConfig({
                 return;
               }
               const transporter = nodemailer.createTransport({
-                host, port, secure: port === 465, auth: { user, pass },
+                host,
+                port,
+                secure: port === 465,
+                auth: { user, pass },
               });
               const data = (doc && doc.payload) || {};
-              const rows = Object.entries(data).map(
-                ([k, v]) => `<tr><td><strong>${k}</strong></td><td>${
-                  typeof v === 'object' ? `<pre>${JSON.stringify(v, null, 2)}</pre>` : String(v ?? '')
-                }</td></tr>`
-              ).join('');
+              const rows = Object.entries(data)
+                .map(
+                  ([k, v]) =>
+                    `<tr><td><strong>${k}</strong></td><td>${
+                      typeof v === 'object'
+                        ? `<pre>${JSON.stringify(v, null, 2)}</pre>`
+                        : String(v ?? '')
+                    }</td></tr>`
+                )
+                .join('');
               await transporter.sendMail({
                 from: `"PhE Website" <${user}>`,
                 to,
@@ -251,7 +254,7 @@ export default buildConfig({
   plugins: [],
 
   typescript: {
-    // только вывод типов при локальной разработке, не влияет на рантайм
+    // Генерация типов только в локальной разработке
     outputFile: path.resolve(__dirname, './payload-types.ts'),
   },
 
