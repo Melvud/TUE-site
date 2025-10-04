@@ -6,6 +6,9 @@ export const Events: CollectionConfig = {
   labels: { singular: 'Event', plural: 'Events' },
   admin: {
     useAsTitle: 'title',
+    livePreview: {
+      url: () => `${process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'}?preview=true`,
+    },
     defaultColumns: ['title', 'date', 'latest', 'published'],
   },
   access: {

@@ -37,7 +37,6 @@ export default async function NewsDetailPage({
         <h1 className="text-4xl font-extrabold">{article.title}</h1>
         <p className="text-slate-300 mt-2">
           {article.date ? new Date(article.date).toLocaleDateString('en-US') : ''}
-          {article.author ? ` • ${article.author}` : ''}
         </p>
       </div>
 

@@ -1,4 +1,3 @@
-// src/app/(frontend)/about/page.tsx
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { draftMode } from 'next/headers'
@@ -18,40 +17,46 @@ type AboutGlobal = {
   }>
 }
 
+// Явно перечисляем коллекции, которые используем здесь
+type KnownMemberCollections = 'members' | 'pastMembers' | 'membersPast'
+
 export default async function AboutPage() {
   const { isEnabled } = await draftMode()
   const payload = await getPayload({ config })
 
-  // читаем глобал с учетом draftMode, без any/ассертов
-  const about = await payload.findGlobal<AboutGlobal>({
+  const about = (await payload.findGlobal({
     slug: 'about',
     draft: isEnabled,
-  })
+    depth: 2,
+  })) as AboutGlobal
 
-  const sections = about.sections ?? []
+  const sections = about?.sections ?? []
 
-  // helper: безопасно получить документы из коллекции (если коллекции нет — вернётся [])
-  const safeFind = async (collection: string) => {
+  // безопасный finder: тип collection — только из известного юниона
+  const safeFind = async (collection: KnownMemberCollections) => {
     try {
       const res = await payload.find({
-        collection,
+        collection, // <- теперь это не произвольная строка
         draft: isEnabled,
         limit: 100,
-      })
+        depth: 2,
+      } as any)
       return res?.docs ?? []
     } catch {
       return []
     }
   }
 
-  // У разных проектов встречаются названия pastMembers / membersPast — пробуем оба.
+  // разные названия: pastMembers / membersPast
   const members = await safeFind('members')
   let pastMembers = await safeFind('pastMembers')
   if (pastMembers.length === 0) pastMembers = await safeFind('membersPast')
 
   return (
     <main className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
-      <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-8">About</h1>
+      <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-8 text-center">
+        About
+      </h1>
 
       <div className="space-y-12">
         {sections.map((section, i) => {
@@ -74,7 +79,9 @@ export default async function AboutPage() {
                 <>
                   <div>
                     {section?.title && (
-                      <h2 className="text-2xl font-bold mb-4">{section.title}</h2>
+                      <h2 className="text-2xl font-bold mb-4 text-center md:text-left">
+                        {section.title}
+                      </h2>
                     )}
                     {html && (
                       <article
@@ -114,7 +121,9 @@ export default async function AboutPage() {
                   </div>
                   <div>
                     {section?.title && (
-                      <h2 className="text-2xl font-bold mb-4">{section.title}</h2>
+                      <h2 className="text-2xl font-bold mb-4 text-center md:text-left">
+                        {section.title}
+                      </h2>
                     )}
                     {html && (
                       <article
@@ -139,7 +148,6 @@ export default async function AboutPage() {
                   member={{
                     name: m.name || m.title || '',
                     role: m.role,
-                    // компонент ожидает поле photo; берём photo или image, если так называется в коллекции
                     photo: m.photo ?? m.image ?? null,
                     email: m.email,
                     linkedin: m.linkedin,
