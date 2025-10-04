@@ -1,3 +1,4 @@
+// src/app/(frontend)/events/[slug]/page.tsx
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { draftMode } from 'next/headers'
@@ -9,9 +10,9 @@ export const dynamic = 'force-dynamic'
 export default async function EventDetailPage({
   params,
 }: {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }) {
-  const { slug } = params
+  const { slug } = await params
   const { isEnabled } = await draftMode()
   const payload = await getPayload({ config })
 
