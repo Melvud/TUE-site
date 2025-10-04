@@ -1,20 +1,3 @@
 {
-  "pages": {
-    "/(frontend)/layout": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/css/app/(frontend)/layout.css",
-      "static/chunks/app/(frontend)/layout.js"
-    ],
-    "/(frontend)/about/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(frontend)/about/page.js"
-    ],
-    "/(frontend)/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(frontend)/page.js"
-    ]
-  }
+  "pages": {}
 }
