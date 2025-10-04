@@ -9,7 +9,7 @@ type Field = {
   type: string
   required: boolean
   placeholder?: string
-  options?: Array<{ value: string }>
+  options?: string[]
 }
 
 export default function JoinForm({ fields }: { fields: Field[] }) {
@@ -22,7 +22,7 @@ export default function JoinForm({ fields }: { fields: Field[] }) {
     setSent(null)
 
     const formData = Object.fromEntries(new FormData(e.currentTarget).entries())
-    
+
     try {
       const res = await fetch('/api/forms/submit', {
         method: 'POST',
@@ -33,9 +33,9 @@ export default function JoinForm({ fields }: { fields: Field[] }) {
           ...formData,
         }),
       })
-      
+
       if (!res.ok) throw new Error('Failed to submit')
-      
+
       setSent('ok')
       e.currentTarget.reset()
     } catch (err: any) {
@@ -73,9 +73,13 @@ export default function JoinForm({ fields }: { fields: Field[] }) {
                 className="w-full bg-slate-800 p-3 rounded text-white"
                 defaultValue=""
               >
-                <option value="" disabled>Select...</option>
+                <option value="" disabled>
+                  Select...
+                </option>
                 {field.options.map((opt, i) => (
-                  <option key={i} value={opt.value}>{opt.value}</option>
+                  <option key={i} value={opt}>
+                    {opt}
+                  </option>
                 ))}
               </select>
             </div>

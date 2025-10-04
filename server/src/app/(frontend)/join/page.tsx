@@ -18,7 +18,17 @@ export default async function JoinUsPage() {
 
   const introHtml = serializeLexical(joinData.introText)
   const detailsHtml = serializeLexical(joinData.detailsHtml)
-  const formFields = joinData.formFields || []
+  
+  // Правильный маппинг полей
+  const formFields = (joinData.formFields || []).map((field: any) => ({
+    id: field.id || crypto.randomUUID(),
+    name: field.name || '',
+    label: field.label || '',
+    type: field.type || 'text',
+    required: field.required || false,
+    placeholder: field.placeholder || '',
+    options: field.options?.map((opt: any) => opt.value || opt) || undefined,
+  }))
 
   return (
     <div className="bg-slate-900 text-white">
@@ -32,7 +42,7 @@ export default async function JoinUsPage() {
             className="prose prose-invert max-w-none mb-8"
             dangerouslySetInnerHTML={{ __html: introHtml }}
           />
-          
+
           <div
             className="prose prose-invert max-w-none mb-10"
             dangerouslySetInnerHTML={{ __html: detailsHtml }}
