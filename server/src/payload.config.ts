@@ -26,31 +26,51 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
     livePreview: {
-      url: ({ data, documentConfig }) => {
-        const baseUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
-        
-        // Для коллекций с slug
-        if ('slug' in data && data.slug) {
-          if (documentConfig?.slug === 'events') {
-            return `${baseUrl}/events/${data.slug}?preview=true`
-          }
-          if (documentConfig?.slug === 'news') {
-            return `${baseUrl}/news/${data.slug}?preview=true`
+      // В Payload 3.x сюда приходят { data, collectionConfig?, globalConfig? ... }
+      url: ({ data, collectionConfig, globalConfig }) => {
+        const baseUrl =
+          process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
+
+        const slug: string | undefined =
+          (data as any)?.slug || (data as any)?.id
+
+        // Превью для коллекций
+        if (collectionConfig) {
+          switch (collectionConfig.slug) {
+            case 'events':
+              return slug
+                ? `${baseUrl}/events/${slug}?preview=true`
+                : `${baseUrl}/events?preview=true`
+            case 'news':
+              return slug
+                ? `${baseUrl}/news/${slug}?preview=true`
+                : `${baseUrl}/news?preview=true`
+            default:
+              // общее правило для любых других коллекций
+              return slug
+                ? `${baseUrl}/${collectionConfig.slug}/${slug}?preview=true`
+                : `${baseUrl}/${collectionConfig.slug}?preview=true`
           }
         }
 
-        // Для globals
-        if (documentConfig?.slug === 'home') {
-          return `${baseUrl}?preview=true`
-        }
-        if (documentConfig?.slug === 'about') {
-          return `${baseUrl}/about?preview=true`
-        }
-        if (documentConfig?.slug === 'join') {
-          return `${baseUrl}/join?preview=true`
+        // Превью для globals
+        if (globalConfig) {
+          switch (globalConfig.slug) {
+            case 'home':
+              return `${baseUrl}?preview=true`
+            case 'about':
+              return `${baseUrl}/about?preview=true`
+            case 'join':
+            case 'join-us':
+              return `${baseUrl}/join?preview=true`
+            default:
+              // если есть другие глобалы — отправим в корень админки как fallback
+              return `${baseUrl}?preview=true`
+          }
         }
 
-        return '' // ← Вернуть пустую строку вместо undefined
+        // Fallback — безопасно вернуть базовый URL
+        return baseUrl
       },
       breakpoints: [
         { label: 'Mobile', name: 'mobile', width: 375, height: 667 },
@@ -59,18 +79,25 @@ export default buildConfig({
       ],
     },
   },
+
   collections: [Users, Media, Events, News, Members, MembersPast],
   globals: [Home, About, JoinUs],
+
   editor: lexicalEditor(),
+
   secret: process.env.PAYLOAD_SECRET || '',
+
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },
+
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URI || '',
     },
   }),
+
   sharp,
+
   plugins: [payloadCloudPlugin()],
 })
