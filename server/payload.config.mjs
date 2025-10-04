@@ -1,3 +1,4 @@
+// server/payload.config.mjs
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { buildConfig } from 'payload'
@@ -7,44 +8,72 @@ import { lexicalEditor } from '@payloadcms/richtext-lexical'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+// ----- helpers / access
 const ROLES = ['viewer', 'editor', 'admin']
 const isAdmin = ({ req }) => req?.user?.role === 'admin'
-const isEditorOrAdmin = ({ req }) => req?.user?.role === 'editor' || req?.user?.role === 'admin'
+const isEditorOrAdmin = ({ req }) =>
+  req?.user?.role === 'editor' || req?.user?.role === 'admin'
 
-const APP_URL = process.env.SERVER_URL || 'http://localhost:3000'
+// base URL for cookies / links
+const RAW_URL = process.env.SERVER_URL || 'http://localhost:3000'
+const APP_URL = RAW_URL.endsWith('/') ? RAW_URL.slice(0, -1) : RAW_URL
 
 export default buildConfig({
+  // helpful startup log
+  onInit: async ({ config }) => {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[Payload] init OK | serverURL=${config.serverURL} | db=${process.env.DATABASE_URL ? 'set' : 'missing'}`
+    )
+  },
+
+  // --------- DATABASE (Postgres / Neon)
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+      // enable TLS for Neon / when DATABASE_SSL=true
+      ssl:
+        process.env.DATABASE_SSL === 'true'
+          ? { rejectUnauthorized: false }
+          : undefined,
     },
     migrationDir: path.resolve(__dirname, 'migrations'),
   }),
 
+  // --------- ADMIN
   admin: {
-    user: 'users',
+    user: 'users', // auth collection
     importMap: { baseDir: path.resolve(__dirname) },
   },
 
-  // CSRF — именно массив (пустой отключает проверки, и сборка не падает)
+  // --------- SECURITY / NETWORK
+  // Must be an array in v3. Empty array effectively disables CSRF without crashing.
   csrf: [],
-  cors: { origins: [APP_URL], credentials: true },
-  cookiePrefix: 'p_',
+  cors: {
+    origins: [APP_URL],
+    credentials: true,
+  },
+  cookiePrefix: 'p_', // avoid collisions
   serverURL: APP_URL,
   secret: process.env.PAYLOAD_SECRET || 'dev-secret',
   telemetry: false,
-
-  editor: lexicalEditor(),
   rateLimit: { window: 60_000, max: 600, trustProxy: true },
 
+  // --------- EDITOR
+  editor: lexicalEditor(),
+
+  // --------- COLLECTIONS
   collections: [
+    // Users (auth)
     {
       slug: 'users',
       auth: {
         useAPIKey: false,
-        tokenExpiration: 60 * 60 * 2,
-        cookies: { sameSite: 'lax', secure: process.env.NODE_ENV === 'production' },
+        tokenExpiration: 60 * 60 * 2, // 2h
+        cookies: {
+          sameSite: 'lax',
+          secure: process.env.NODE_ENV === 'production',
+        },
       },
       admin: { useAsTitle: 'email', defaultColumns: ['email', 'name', 'role'] },
       access: {
@@ -60,10 +89,12 @@ export default buildConfig({
           type: 'select',
           required: true,
           defaultValue: 'editor',
-          options: ROLES.map(r => ({ label: r, value: r })),
+          options: ROLES.map((r) => ({ label: r, value: r })),
         },
       ],
     },
+
+    // Media (uploads)
     {
       slug: 'media',
       labels: { singular: 'Media', plural: 'Media' },
@@ -83,11 +114,16 @@ export default buildConfig({
         { name: 'caption', type: 'textarea' },
       ],
     },
+
+    // Events
     {
       slug: 'events',
       labels: { singular: 'Event', plural: 'Events' },
       versions: { drafts: true, maxPerDoc: 20 },
-      admin: { useAsTitle: 'title', defaultColumns: ['title', 'date', 'published', 'updatedAt'] },
+      admin: {
+        useAsTitle: 'title',
+        defaultColumns: ['title', 'date', 'published', 'updatedAt'],
+      },
       access: {
         read: () => true,
         create: isEditorOrAdmin,
@@ -106,11 +142,16 @@ export default buildConfig({
         { name: 'cover', type: 'upload', relationTo: 'media' },
       ],
     },
+
+    // News
     {
       slug: 'news',
       labels: { singular: 'News', plural: 'News' },
       versions: { drafts: true, maxPerDoc: 20 },
-      admin: { useAsTitle: 'title', defaultColumns: ['title', 'date', 'published', 'updatedAt'] },
+      admin: {
+        useAsTitle: 'title',
+        defaultColumns: ['title', 'date', 'published', 'updatedAt'],
+      },
       access: {
         read: () => true,
         create: isEditorOrAdmin,
@@ -128,6 +169,8 @@ export default buildConfig({
         { name: 'cover', type: 'upload', relationTo: 'media' },
       ],
     },
+
+    // Members (current)
     {
       slug: 'members',
       labels: { singular: 'Member', plural: 'Members' },
@@ -148,6 +191,8 @@ export default buildConfig({
         { name: 'photo', type: 'upload', relationTo: 'media' },
       ],
     },
+
+    // Past Members
     {
       slug: 'membersPast',
       labels: { singular: 'Past Member', plural: 'Past Members' },
@@ -169,12 +214,14 @@ export default buildConfig({
         { name: 'photo', type: 'upload', relationTo: 'media' },
       ],
     },
+
+    // Join submissions (public create)
     {
       slug: 'joinSubmissions',
       labels: { singular: 'Join Submission', plural: 'Join Submissions' },
       admin: { useAsTitle: 'id' },
       access: {
-        read: isAdmin,
+        read: isAdmin, // only admin can read
         create: () => true,
         update: isAdmin,
         delete: isAdmin,
@@ -204,15 +251,23 @@ export default buildConfig({
               })
               const data = doc?.payload || {}
               const rows = Object.entries(data)
-                .map(([k, v]) => `<tr><td><strong>${k}</strong></td><td>${
-                  typeof v === 'object' ? `<pre>${JSON.stringify(v, null, 2)}</pre>` : String(v ?? '')
-                }</td></tr>`)
+                .map(
+                  ([k, v]) =>
+                    `<tr><td><strong>${k}</strong></td><td>${
+                      typeof v === 'object'
+                        ? `<pre>${JSON.stringify(v, null, 2)}</pre>`
+                        : String(v ?? '')
+                    }</td></tr>`
+                )
                 .join('')
               await transporter.sendMail({
                 from: `"PhE Website" <${user}>`,
                 to,
                 subject: data?.subject || 'Join form',
-                html: `<div style="font-family:system-ui,sans-serif"><h2>Join Form Submission</h2><table border="1" cellspacing="0" cellpadding="6">${rows}</table></div>`,
+                html: `<div style="font-family:system-ui,sans-serif">
+                        <h2>Join Form Submission</h2>
+                        <table border="1" cellspacing="0" cellpadding="6">${rows}</table>
+                       </div>`,
               })
               console.log('📧 Email sent')
             } catch (e) {
@@ -224,6 +279,7 @@ export default buildConfig({
     },
   ],
 
+  // --------- API
   graphQL: { disable: false },
   typescript: { outputFile: path.resolve(__dirname, './payload-types.ts') },
 })

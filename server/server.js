@@ -1,16 +1,4 @@
-// Next.js Custom Server + Express (Payload v3)
-// - Next обслуживает Payload: /admin, /api, /graphql, /graphql-playground
-// - Express обслуживает:
-//     • /health
-//     • /db-health (проверка БД)
-//     • /uploads (статик)
-//     • /api/upload-local (локальные загрузки)
-//     • SPA фронт из /dist с fallback на index.html
-//
-// Дополнительно:
-// - Жёсткая проверка соединения с БД на старте (pg.Pool SELECT 1)
-//   Если соединение не установлено — процесс завершается с кодом 1.
-
+// server/server.js
 import path from 'node:path'
 import fs from 'node:fs'
 import url from 'node:url'
@@ -21,6 +9,7 @@ import multer from 'multer'
 import next from 'next'
 import { v4 as uuidv4 } from 'uuid'
 import pg from 'pg'
+import morgan from 'morgan'
 
 dotenv.config()
 
@@ -35,12 +24,32 @@ const server = express()
 server.disable('x-powered-by')
 server.set('trust proxy', true)
 
-// ----------- базовые мидлвары
+// ---------- request id + базовые мидлвары
+server.use((req, _res, nextFn) => {
+  req.id = (req.headers['x-request-id']?.toString() || uuidv4()).slice(0, 12)
+  nextFn()
+})
 server.use(cors())
 server.use(express.json({ limit: '10mb' }))
 server.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
-// ----------- health
+// ---------- morgan с расширенным форматом
+morgan.token('id', (req) => req.id)
+morgan.token('body', (req) => {
+  try {
+    if (!req.body || Object.keys(req.body).length === 0) return '-'
+    return JSON.stringify(req.body)
+  } catch {
+    return '[unserializable]'
+  }
+})
+server.use(
+  morgan(
+    ':date[iso] :id :remote-addr :method :url :status :res[content-length] - :response-time ms :body'
+  )
+)
+
+// ---------- health
 server.get('/health', (_req, res) => res.status(200).send('ok'))
 
 // =============== БАЗА ДАННЫХ: проверка подключения ===============
@@ -48,13 +57,10 @@ const { Pool } = pg
 
 function shouldUseSSLFromUrl(connectionString) {
   if (!connectionString) return false
-  // Если в строке явно sslmode=require — используем SSL
   if (/sslmode\s*=\s*require/i.test(connectionString)) return true
-  // Простейшая эвристика для Neon/Managed: их хосты требуют TLS
   if (/\.neon\.tech\b/i.test(connectionString)) return true
   return false
 }
-
 function createPgPool() {
   const connectionString = process.env.DATABASE_URL
   if (!connectionString) {
@@ -68,26 +74,21 @@ function createPgPool() {
   return new Pool({
     connectionString,
     ssl: useSSL ? { rejectUnauthorized: false } : undefined,
-    // Немного таймаутов, чтобы быстрее отваливаться при сетевых проблемах
     connectionTimeoutMillis: 10_000,
     idleTimeoutMillis: 30_000,
     max: 5,
   })
 }
-
 const pgPool = createPgPool()
 
 async function assertDatabaseConnection() {
-  if (!pgPool) {
-    throw new Error('DATABASE_URL is not configured')
-  }
+  if (!pgPool) throw new Error('DATABASE_URL is not configured')
   let client
   try {
     client = await pgPool.connect()
     const { rows } = await client.query('SELECT 1 as ok')
-    if (!rows?.length || rows[0].ok !== 1) {
+    if (!rows?.length || rows[0].ok !== 1)
       throw new Error('Unexpected DB check response')
-    }
     console.log('✅ Database connection OK')
   } catch (err) {
     console.error('❌ Database connection FAILED:', err?.message || err)
@@ -96,8 +97,6 @@ async function assertDatabaseConnection() {
     client?.release()
   }
 }
-
-// Эндпоинт для внешней проверки БД
 server.get('/db-health', async (_req, res) => {
   try {
     await assertDatabaseConnection()
@@ -108,78 +107,96 @@ server.get('/db-health', async (_req, res) => {
 })
 // ================================================================
 
-// ----------- uploads (локальное хранение — как было)
+// ---------- uploads (локальное хранение)
+import { fileURLToPath as _f } from 'url' // тишина TS
 const UPLOADS_DIR = path.join(__dirname, 'uploads')
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true })
-
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
-  filename: (_req, file, cb) => cb(null, `${uuidv4()}${path.extname(file.originalname || '')}`)
+  filename: (_req, file, cb) =>
+    cb(null, `${uuidv4()}${path.extname(file.originalname || '')}`),
 })
 const upload = multer({ storage })
-
 server.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d', immutable: true }))
-
 server.post('/api/upload-local', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file' })
+  console.log(`[${req.id}] UPLOAD saved: ${req.file.filename}`)
   res.json({ url: `/uploads/${req.file.filename}` })
 })
 
-// ----------- Next (Payload) — строго на префиксах
-server.all(
-  [
-    '/admin', '/admin/*',
-    '/api', '/api/*',
-    '/graphql', '/graphql/*',
-    '/graphql-playground', '/graphql-playground/*',
-  ],
-  (req, res) => handle(req, res)
-)
+// ---------- детальные логи для Payload/Next префиксов
+const payloadPaths = [
+  '/admin', '/admin/*',
+  '/api', '/api/*',
+  '/graphql', '/graphql/*',
+  '/graphql-playground', '/graphql-playground/*',
+]
+server.use(payloadPaths, (req, _res, nextFn) => {
+  console.log(
+    `[${req.id}] -> PayloadRoute: ${req.method} ${req.originalUrl} UA=${req.headers['user-agent']}`
+  )
+  nextFn()
+})
 
-// ----------- SPA фронт из /dist
-const projectRoot = path.resolve(__dirname, '..')       // корень репо
-const distPath = path.resolve(projectRoot, 'dist')      // Vite build outDir
-const indexFile = path.join(distPath, 'index.html')
-
-// 1) отдаём ассеты как статику (JS/CSS/img и т.п.)
-server.use(express.static(distPath, { index: false, maxAge: dev ? 0 : '1d' }))
-
-// 2) fallback для SPA: любые НЕ-Payload пути (GET, html) -> dist/index.html
-server.get('*', (req, res, nextFn) => {
-  const accept = req.headers.accept || ''
-  const isHTML = accept.includes('text/html')
-  const isGet = (req.method || 'GET').toUpperCase() === 'GET'
-  if (isGet && isHTML) {
-    if (fs.existsSync(indexFile)) {
-      return res.sendFile(indexFile)
-    }
+await (async () => {
+  try {
+    await assertDatabaseConnection()
+  } catch {
+    process.exit(1)
   }
-  return nextFn()
-})
+  await nextApp.prepare()
 
-/**
- * Порядок запуска:
- * 1) Жёсткая проверка БД (assertDatabaseConnection)
- * 2) Подготовка Next (Payload)
- * 3) Прослушивание порта
- */
-try {
-  await assertDatabaseConnection()
-} catch {
-  // Сразу падаем — так легче диагностировать проблемы с доступом к базе.
-  process.exit(1)
-}
+  // Передаём в Next все Payload-маршруты
+  server.all(payloadPaths, (req, res) => {
+    return handle(req, res)
+  })
 
-await nextApp.prepare()
-server.all('*', (req, res) => handle(req, res))
+  // ---------- SPA фронт из /dist
+  const projectRoot = path.resolve(__dirname, '..')
+  const distPath = path.resolve(projectRoot, 'dist')
+  const indexFile = path.join(distPath, 'index.html')
 
-const PORT = Number(process.env.PORT || 3000)
-server.listen(PORT, '0.0.0.0', () => {
-  console.log('🚀 Server ready')
-  console.log(`   http://localhost:${PORT}`)
-  console.log('📍 Admin Panel: /admin')
-  console.log('📍 REST API:    /api/*')
-  console.log('📍 GraphQL:     /graphql (и playground: /graphql-playground)')
-  console.log('📍 Health:      /health')
-  console.log('📍 DB Health:   /db-health')
-})
+  // 1) ассеты
+  server.use(express.static(distPath, { index: false, maxAge: dev ? 0 : '1d' }))
+
+  // 2) fallback для SPA
+  server.get('*', (req, res, nextFn) => {
+    const accept = req.headers.accept || ''
+    const isHTML = accept.includes('text/html')
+    const isGet = (req.method || 'GET').toUpperCase() === 'GET'
+    if (isGet && isHTML) {
+      console.log(`[${req.id}] -> SPA fallback: ${req.originalUrl}`)
+      if (fs.existsSync(indexFile)) {
+        return res.sendFile(indexFile)
+      }
+    }
+    return nextFn()
+  })
+
+  // ---------- глобальный обработчик ошибок Express
+  // (чтобы не терять трассировку)
+  // eslint-disable-next-line no-unused-vars
+  server.use((err, req, res, _next) => {
+    console.error(`[${req.id}] ❌ Unhandled error:`, err?.stack || err)
+    res.status(500).json({ error: 'Internal Server Error', rid: req.id })
+  })
+
+  // node-level
+  process.on('unhandledRejection', (reason) => {
+    console.error('⨯ unhandledRejection:', reason)
+  })
+  process.on('uncaughtException', (err) => {
+    console.error('⨯ uncaughtException:', err)
+  })
+
+  const PORT = Number(process.env.PORT || 3000)
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log('🚀 Server ready')
+    console.log(`   http://localhost:${PORT}`)
+    console.log('📍 Admin Panel: /admin')
+    console.log('📍 REST API:    /api/*')
+    console.log('📍 GraphQL:     /graphql (и playground: /graphql-playground)')
+    console.log('📍 Health:      /health')
+    console.log('📍 DB Health:   /db-health')
+  })
+})()
