@@ -20,9 +20,6 @@ import { MediaBlock } from '../../blocks/MediaBlock/config'
 // on the homepage, pair images with text, and manage the Join Us
 // section. Each block exposes a `slug` and `interfaceName` that
 // Payload uses to generate its admin UI and type definitions.
-import { Marquee } from '../../blocks/Marquee/config'
-import { TextImage } from '../../blocks/TextImage/config'
-import { JoinUs } from '../../blocks/JoinUs/config'
 
 // Other utilities used to define page fields. These are unchanged
 // relative to the upstream repository and provide fields for hero
@@ -113,9 +110,6 @@ export const Pages: CollectionConfig<'pages'> = {
                 MediaBlock,
                 Archive,
                 FormBlock,
-                Marquee,
-                TextImage,
-                JoinUs,
               ],
               required: true,
               admin: {
