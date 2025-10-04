@@ -1,8 +1,7 @@
+// src/app/(frontend)/about/page.tsx
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { draftMode } from 'next/headers'
-import Section from '@/components/Section'
-import TeamMemberCard from '@/components/TeamMemberCard'
 import { serializeLexical } from '@/lib/serializeLexical'
 
 export const dynamic = 'force-dynamic'
@@ -11,93 +10,94 @@ export default async function AboutPage() {
   const { isEnabled } = await draftMode()
   const payload = await getPayload({ config })
 
-  const [aboutData, membersData, pastMembersData] = await Promise.all([
-    payload.findGlobal({
-      slug: 'about',
-      draft: isEnabled,
-    }),
-    payload.find({
-      collection: 'members',
-      limit: 100,
-      sort: 'order',
-    }),
-    payload.find({
-      collection: 'membersPast',
-      limit: 100,
-      sort: '-createdAt',
-    }).catch(() => ({ docs: [] })),
-  ])
+  // читаем глобал с учетом draftMode
+  const about = await payload.findGlobal({
+    slug: 'about',
+    draft: isEnabled,
+  })
 
-  const sections = aboutData.sections || []
+  const sections = (about as any)?.sections || []
 
   return (
-    <div className="bg-slate-900">
-      <div className="relative pt-32 pb-16 text-center text-white">
-        <h1 className="text-5xl font-extrabold">About PhE</h1>
-        <p className="text-xl text-slate-300 mt-4">Who we are, what we do, and why we do it.</p>
-      </div>
+    <main className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
+      <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-8">
+        About
+      </h1>
 
-      {sections.map((section: any, idx: number) => {
-        const isTextImage = section.layout === 'text-image'
-        const imageUrl = typeof section.image === 'object' && section.image?.url ? section.image.url : ''
-        const textHtml = serializeLexical(section.text)
+      <div className="space-y-12">
+        {sections.map((section: any, i: number) => {
+          const html = section?.text ? serializeLexical(section.text) : ''
+          const imgUrl =
+            typeof section?.image === 'object' && section.image?.url
+              ? section.image.url
+              : undefined
 
-        return (
-          <Section key={section.id} className={idx % 2 === 1 ? 'bg-slate-800/50' : ''}>
-            <div className="grid md:grid-cols-2 gap-16 items-center">
+          const isTextImage = section?.layout === 'text-image'
+
+          return (
+            <section
+              key={i}
+              className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start"
+            >
               {isTextImage ? (
                 <>
-                  <div className="text-lg text-slate-300 space-y-4">
-                    <h3 className="text-3xl font-bold text-white mb-4">{section.title}</h3>
-                    <div dangerouslySetInnerHTML={{ __html: textHtml }} />
+                  <div>
+                    {section?.title && (
+                      <h2 className="text-2xl font-bold mb-4">{section.title}</h2>
+                    )}
+                    {html && (
+                      <article
+                        className="prose prose-invert max-w-none"
+                        dangerouslySetInnerHTML={{ __html: html }}
+                      />
+                    )}
                   </div>
                   <div>
-                    <img src={imageUrl} alt={section.title} className="rounded-lg shadow-lg" />
+                    {imgUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={imgUrl}
+                        alt={section?.title || 'About image'}
+                        className="w-full h-auto rounded-2xl border border-slate-700"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="aspect-[4/3] w-full rounded-2xl bg-slate-800" />
+                    )}
                   </div>
                 </>
               ) : (
                 <>
                   <div>
-                    <img src={imageUrl} alt={section.title} className="rounded-lg shadow-lg" />
+                    {imgUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={imgUrl}
+                        alt={section?.title || 'About image'}
+                        className="w-full h-auto rounded-2xl border border-slate-700"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="aspect-[4/3] w-full rounded-2xl bg-slate-800" />
+                    )}
                   </div>
-                  <div className="text-lg text-slate-300 space-y-4">
-                    <h3 className="text-3xl font-bold text-white mb-4">{section.title}</h3>
-                    <div dangerouslySetInnerHTML={{ __html: textHtml }} />
+                  <div>
+                    {section?.title && (
+                      <h2 className="text-2xl font-bold mb-4">{section.title}</h2>
+                    )}
+                    {html && (
+                      <article
+                        className="prose prose-invert max-w-none"
+                        dangerouslySetInnerHTML={{ __html: html }}
+                      />
+                    )}
                   </div>
                 </>
               )}
-            </div>
-          </Section>
-        )
-      })}
-
-      <Section title="Meet the Team">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">
-          {membersData.docs.map((member: any) => (
-            <TeamMemberCard key={member.id} member={member} />
-          ))}
-        </div>
-      </Section>
-
-      {pastMembersData.docs.length > 0 && (
-        <Section title="Past Members" className="bg-slate-800/50">
-          <div className="flex flex-wrap justify-center gap-8">
-            {pastMembersData.docs.map((member: any) => {
-              const photoUrl = typeof member.photo === 'object' && member.photo?.url ? member.photo.url : ''
-              return (
-                <div key={member.id} className="text-center">
-                  <img
-                    src={photoUrl}
-                    alt={member.name}
-                    className="w-32 h-32 rounded-full mx-auto mb-2 object-cover border-4 border-slate-700"
-                  />
-                  <h4 className="font-semibold text-white">{member.name}</h4>
-                </div>
-              )
-            })}
-          </div>
-        </Section>
-      )}
-    </div>
+            </section>
+          )
+        })}
+      </div>
+    </main>
   )
 }
