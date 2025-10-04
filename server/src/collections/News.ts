@@ -10,7 +10,7 @@ export const News: CollectionConfig = {
         if (data?.slug) {
           return `${process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'}/news/${data.slug}?preview=true`
         }
-        return undefined
+        return '' // ← Добавить
       },
     },
   },
