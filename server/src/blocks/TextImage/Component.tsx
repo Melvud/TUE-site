@@ -1,24 +1,22 @@
 import React from 'react'
-
-import type { TextImageBlock } from '@/payload-types'
 import RichText from '@/components/RichText'
 
-/**
- * Renders a responsive text and image block. The image and rich text are
- * displayed side‑by‑side on medium and larger screens and stacked on
- * smaller screens. The `imagePosition` determines whether the image
- * appears on the left or right.
- */
-export const TextImageBlock: React.FC<TextImageBlock> = ({
+// Локальные пропсы
+type TextImageProps = {
+  image?: unknown
+  imagePosition?: 'left' | 'right'
+  richText?: unknown
+}
+
+export const TextImageBlock: React.FC<TextImageProps> = ({
   image,
   imagePosition = 'left',
   richText,
 }) => {
-  // Determine the URL from the image relation. The payload `media`
-  // relation returns an object containing a `url` property when the
-  // document is included by default. Fallback to empty string.
+  // Определяем URL из relation-to-media
   let imageUrl = ''
-  if (typeof image === 'object' && image !== null && 'url' in image) {
+  if (typeof image === 'object' && image !== null && 'url' in (image as any)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     imageUrl = (image as any).url as string
   }
 

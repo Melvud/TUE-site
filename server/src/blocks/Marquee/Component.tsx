@@ -1,21 +1,23 @@
-'use client';
+'use client'
 
-import React from 'react';
+import React from 'react'
+import RichText from '@/components/RichText'
 
-import type { MarqueeBlock } from '@/payload-types';
-import RichText from '@/components/RichText';
+// Локальные пропсы
+type MarqueeProps = {
+  items?: Array<{ text?: unknown }>
+  speed?: number
+}
 
 /**
  * MarqueeBlock renders an animated horizontal scrolling ticker. It
  * accepts an array of rich-text items and an optional speed
  * controlling the scroll duration. The animation loops infinitely.
  */
-export const MarqueeBlock: React.FC<MarqueeBlock> = ({ items, speed = 20 }) => {
-  if (!items || items.length === 0) return null;
+export const MarqueeBlock: React.FC<MarqueeProps> = ({ items, speed = 20 }) => {
+  if (!items || items.length === 0) return null
 
-  // Convert the provided speed (in seconds) to a CSS duration. If the
-  // editor supplies an invalid number, fall back to 20 seconds.
-  const animationDuration = `${typeof speed === 'number' && speed > 0 ? speed : 20}s`;
+  const animationDuration = `${typeof speed === 'number' && speed > 0 ? speed : 20}s`
 
   return (
     <div className="w-full overflow-hidden bg-accent text-primary py-2">
@@ -23,7 +25,6 @@ export const MarqueeBlock: React.FC<MarqueeBlock> = ({ items, speed = 20 }) => {
         className="flex whitespace-nowrap animate-marquee"
         style={{ animationDuration }}
       >
-        {/* Repeat the items twice to ensure a seamless loop */}
         {[...items, ...items].map(({ text }, idx) => (
           <div key={idx} className="flex items-center px-4">
             {text && <RichText data={text} />}
@@ -31,7 +32,7 @@ export const MarqueeBlock: React.FC<MarqueeBlock> = ({ items, speed = 20 }) => {
           </div>
         ))}
       </div>
-      {/* styled-jsx работает только в Client Component */}
+
       <style jsx>{`
         @keyframes marquee {
           0% {
@@ -49,5 +50,5 @@ export const MarqueeBlock: React.FC<MarqueeBlock> = ({ items, speed = 20 }) => {
         }
       `}</style>
     </div>
-  );
-};
+  )
+}

@@ -1,16 +1,23 @@
 import React from 'react'
-
-import type { JoinUsBlock } from '@/payload-types'
 import RichText from '@/components/RichText'
 
+// Локальные пропсы вместо импортов из '@/payload-types'
+type JoinUsProps = {
+  intro?: unknown
+  memberships?: Array<{
+    title?: string
+    description?: unknown
+  }>
+}
+
 /**
- * JoinUsBlock displays a join‑the‑society section comprised of an
+ * JoinUsBlock displays a join-the-society section comprised of an
  * introductory paragraph and a list of membership tiers. Each tier is
  * rendered with its title and description. The use of rich text
  * throughout allows editors to emphasize important details, add links,
  * and insert other rich formatting.
  */
-export const JoinUsBlock: React.FC<JoinUsBlock> = ({ intro, memberships }) => {
+export const JoinUsBlock: React.FC<JoinUsProps> = ({ intro, memberships }) => {
   return (
     <div className="container my-12">
       {intro && <RichText data={intro} />}
