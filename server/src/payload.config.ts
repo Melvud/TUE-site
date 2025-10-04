@@ -26,7 +26,7 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
     livePreview: {
-      // В Payload 3.x сюда приходят { data, collectionConfig?, globalConfig? ... }
+      // Payload 3.x: { data, collectionConfig?, globalConfig? }
       url: ({ data, collectionConfig, globalConfig }) => {
         const baseUrl =
           process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
@@ -34,7 +34,7 @@ export default buildConfig({
         const slug: string | undefined =
           (data as any)?.slug || (data as any)?.id
 
-        // Превью для коллекций
+        // Коллекции
         if (collectionConfig) {
           switch (collectionConfig.slug) {
             case 'events':
@@ -46,30 +46,26 @@ export default buildConfig({
                 ? `${baseUrl}/news/${slug}?preview=true`
                 : `${baseUrl}/news?preview=true`
             default:
-              // общее правило для любых других коллекций
               return slug
                 ? `${baseUrl}/${collectionConfig.slug}/${slug}?preview=true`
                 : `${baseUrl}/${collectionConfig.slug}?preview=true`
           }
         }
 
-        // Превью для globals
+        // Глобалы (используйте только реальные slugs из вашего проекта)
         if (globalConfig) {
           switch (globalConfig.slug) {
             case 'home':
               return `${baseUrl}?preview=true`
             case 'about':
               return `${baseUrl}/about?preview=true`
-            case 'join':
-            case 'join-us':
+            case 'join': // соответствует ./globals/JoinUs
               return `${baseUrl}/join?preview=true`
             default:
-              // если есть другие глобалы — отправим в корень админки как fallback
               return `${baseUrl}?preview=true`
           }
         }
 
-        // Fallback — безопасно вернуть базовый URL
         return baseUrl
       },
       breakpoints: [
@@ -79,25 +75,18 @@ export default buildConfig({
       ],
     },
   },
-
   collections: [Users, Media, Events, News, Members, MembersPast],
   globals: [Home, About, JoinUs],
-
   editor: lexicalEditor(),
-
   secret: process.env.PAYLOAD_SECRET || '',
-
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },
-
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URI || '',
     },
   }),
-
   sharp,
-
   plugins: [payloadCloudPlugin()],
 })
