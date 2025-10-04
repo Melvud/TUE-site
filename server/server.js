@@ -123,20 +123,6 @@ server.post('/api/upload-local', upload.single('file'), (req, res) => {
   res.json({ url: `/uploads/${req.file.filename}` })
 })
 
-// ---------- детальные логи для Payload/Next префиксов
-const payloadPaths = [
-  '/admin', '/admin/*',
-  '/api', '/api/*',
-  '/graphql', '/graphql/*',
-  '/graphql-playground', '/graphql-playground/*',
-]
-server.use(payloadPaths, (req, _res, nextFn) => {
-  console.log(
-    `[${req.id}] -> PayloadRoute: ${req.method} ${req.originalUrl} UA=${req.headers['user-agent']}`
-  )
-  nextFn()
-})
-
 await (async () => {
   try {
     await assertDatabaseConnection()
@@ -145,39 +131,70 @@ await (async () => {
   }
   await nextApp.prepare()
 
-  // === ВАЖНО: сначала обслуживаем ассеты Next ===
+  // ===== ПОРЯДОК MIDDLEWARE КРИТИЧЕСКИ ВАЖЕН! =====
+  
+  // 1. Next.js static files (_next/*)
   server.all(/^\/_next\/.*/, (req, res) => {
     console.log(`[${req.id}] -> Next asset: ${req.method} ${req.originalUrl}`)
     return handle(req, res)
   })
-  // Часто Next генерирует эти файлы — тоже отдаём через Next
+
+  // 2. Next.js system files
   server.all(/^\/favicon\.ico$/, (req, res) => handle(req, res))
   server.all(/^\/robots\.txt$/, (req, res) => handle(req, res))
   server.all(/^\/sitemap\.xml$/, (req, res) => handle(req, res))
 
-  // Затем — все Payload/Next маршруты приложения
-  server.all(payloadPaths, (req, res) => handle(req, res))
+  // 3. Payload Admin UI (/admin и все вложенные пути)
+  server.all(/^\/admin(\/.*)?$/, (req, res) => {
+    console.log(`[${req.id}] -> AdminRoute: ${req.method} ${req.originalUrl}`)
+    return handle(req, res)
+  })
 
-  // ---------- SPA фронт из /dist
+  // 4. Payload REST API (/api/*)
+  server.all(/^\/api\/.*/, (req, res) => {
+    console.log(`[${req.id}] -> APIRoute: ${req.method} ${req.originalUrl}`)
+    return handle(req, res)
+  })
+
+  // 5. Payload GraphQL (/graphql и /graphql-playground)
+  server.all(/^\/graphql(-playground)?$/, (req, res) => {
+    console.log(`[${req.id}] -> GraphQLRoute: ${req.method} ${req.originalUrl}`)
+    return handle(req, res)
+  })
+
+  // 6. Frontend SPA (dist/)
   const projectRoot = path.resolve(__dirname, '..')
   const distPath = path.resolve(projectRoot, 'dist')
   const indexFile = path.join(distPath, 'index.html')
+  const hasDist = fs.existsSync(distPath) && fs.existsSync(indexFile)
 
-  // 1) ассеты SPA
-  server.use(express.static(distPath, { index: false, maxAge: dev ? 0 : '1d' }))
+  if (!hasDist) {
+    console.warn('⚠️  Frontend dist/ not found. Run "npm run build" in root directory.')
+  }
 
-  // 2) fallback для SPA (все остальные HTML-запросы)
-  server.get('*', (req, res, nextFn) => {
+  // Static assets from dist/
+  if (hasDist) {
+    server.use(express.static(distPath, { index: false, maxAge: dev ? 0 : '1d' }))
+  }
+
+  // 7. SPA fallback (только для GET/HEAD HTML запросов, которые не попали в предыдущие правила)
+  server.all('*', (req, res) => {
     const accept = req.headers.accept || ''
     const isHTML = accept.includes('text/html')
-    const isGet = (req.method || 'GET').toUpperCase() === 'GET'
-    if (isGet && isHTML) {
-      console.log(`[${req.id}] -> SPA fallback: ${req.originalUrl}`)
-      if (fs.existsSync(indexFile)) {
+    const isGetOrHead = ['GET', 'HEAD'].includes(req.method?.toUpperCase() || 'GET')
+    
+    if (isGetOrHead && isHTML) {
+      if (hasDist && fs.existsSync(indexFile)) {
+        console.log(`[${req.id}] -> SPA fallback: ${req.method} ${req.originalUrl}`)
         return res.sendFile(indexFile)
+      } else {
+        console.log(`[${req.id}] -> SPA not available (dist missing)`)
+        return res.status(404).send('Frontend not built. Please run "npm run build" in root directory.')
       }
     }
-    return nextFn()
+    
+    // Для всех остальных запросов - 404
+    return res.status(404).json({ error: 'Not found' })
   })
 
   // ---------- глобальный обработчик ошибок Express
@@ -204,5 +221,10 @@ await (async () => {
     console.log('📍 GraphQL:     /graphql (и playground: /graphql-playground)')
     console.log('📍 Health:      /health')
     console.log('📍 DB Health:   /db-health')
+    if (hasDist) {
+      console.log('📍 Frontend:    / (React SPA)')
+    } else {
+      console.log('⚠️  Frontend:    Not available (run build)')
+    }
   })
 })()

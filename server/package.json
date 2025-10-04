@@ -7,6 +7,7 @@
     "dev": "node server.js",
     "build": "next build",
     "start": "node server.js",
+    "create-admin": "node scripts/create-admin.mjs",
     "migrate": "PAYLOAD_CONFIG_PATH=./server/payload.config.js payload migrate"
   },
   "dependencies": {

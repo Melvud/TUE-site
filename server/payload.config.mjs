@@ -21,7 +21,6 @@ const APP_URL = RAW_URL.endsWith('/') ? RAW_URL.slice(0, -1) : RAW_URL
 export default buildConfig({
   // helpful startup log
   onInit: async ({ config }) => {
-    // eslint-disable-next-line no-console
     console.log(
       `[Payload] init OK | serverURL=${config.serverURL} | db=${process.env.DATABASE_URL ? 'set' : 'missing'}`
     )
@@ -43,16 +42,25 @@ export default buildConfig({
   // --------- ADMIN
   admin: {
     user: 'users', // auth collection
-    importMap: { baseDir: path.resolve(__dirname) },
+    importMap: { 
+      baseDir: path.resolve(__dirname),
+    },
   },
 
   // --------- SECURITY / NETWORK
-  // Must be an array in v3. Empty array effectively disables CSRF without crashing.
-  csrf: [],
-  cors: {
-    origins: [APP_URL],
-    credentials: true,
-  },
+  // CSRF protection - указываем доверенные origins
+  csrf: [
+    APP_URL,
+    'http://localhost:5173', // Vite dev server
+    'http://localhost:3000',
+  ],
+  
+  cors: [
+    APP_URL,
+    'http://localhost:5173',
+    'http://localhost:3000',
+  ],
+  
   cookiePrefix: 'p_', // avoid collisions
   serverURL: APP_URL,
   secret: process.env.PAYLOAD_SECRET || 'dev-secret',
