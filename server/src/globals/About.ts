@@ -6,10 +6,7 @@ import {
   EXPERIMENTAL_TableFeature,
 } from '@payloadcms/richtext-lexical'
 
-// Простой блок для «кодовых вставок» (code block).
-// Это не inline-«code», а отдельный блок с полем textarea.
-// При желании позже можно заменить на CodeField из @payloadcms/ui
-// (см. пример в доках по BlocksFeature).
+// Простой блок «Code Block» через BlocksFeature (для многострочного кода)
 const CodeBlock: Block = {
   slug: 'codeBlock',
   labels: { singular: 'Code Block', plural: 'Code Blocks' },
@@ -43,7 +40,29 @@ const CodeBlock: Block = {
 export const About: GlobalConfig = {
   slug: 'about',
   access: { read: () => true },
-  admin: { description: 'About page content' },
+
+  // ВКЛЮЧАЕМ черновики — без этого «Preview» и живое превью не появятся
+  versions: { drafts: true },
+
+  admin: {
+    description: 'About page content',
+    // Локально для about включаем Live Preview (кнопка «глаз» в админке)
+    livePreview: {
+      // идём через /api/preview, чтобы включить draftMode и сделать редирект
+      url: () => {
+        const base =
+          process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
+        const redirect = encodeURIComponent('/about')
+        return `${base}/api/preview?redirect=${redirect}`
+      },
+      breakpoints: [
+        { label: 'Mobile', name: 'mobile', width: 375, height: 667 },
+        { label: 'Tablet', name: 'tablet', width: 768, height: 1024 },
+        { label: 'Desktop', name: 'desktop', width: 1440, height: 900 },
+      ],
+    },
+  },
+
   fields: [
     {
       name: 'sections',
@@ -63,32 +82,25 @@ export const About: GlobalConfig = {
             { label: 'Image → Text', value: 'image-text' },
           ],
         },
-        {
-          name: 'title',
-          label: 'Title',
-          type: 'text',
-          required: true,
-        },
+        { name: 'title', label: 'Title', type: 'text', required: true },
+
         {
           name: 'text',
           label: 'Text',
           type: 'richText',
           required: false,
           editor: lexicalEditor({
-            // см. docs: features можно вернуть функцией, добавив к defaultFeatures свои
-            // Official features список + правильные имена: EXPERIMENTAL_TableFeature, FixedToolbarFeature и т.д.
-            // Таблицы НЕ включены по умолчанию.
             features: ({ defaultFeatures }) => [
-              ...defaultFeatures, // включает заголовки, списки, цитаты, ссылки, inline code и пр.
-              FixedToolbarFeature(), // закреплённая панель сверху
-              EXPERIMENTAL_TableFeature(), // таблицы (экспериментально)
-              BlocksFeature({
-                blocks: [CodeBlock], // даём возможность вставлять наш Code Block
-                inlineBlocks: [],    // при желании можно добавить inline-блоки
+              ...defaultFeatures,            // базовый набор (заголовки, списки, цитаты, ссылки, inline-code и т.п.)
+              FixedToolbarFeature(),         // фиксированная верхняя панель
+              EXPERIMENTAL_TableFeature(),   // таблицы
+              BlocksFeature({                // блочная вставка кода
+                blocks: [CodeBlock],
               }),
             ],
           }),
         },
+
         {
           name: 'image',
           label: 'Image',

@@ -19,7 +19,10 @@
 html {
   font-size: 18px;
   line-height: 32px;
-  background: rgb(0, 0, 0);
+  /* Match the primary background color used on the body to avoid black gaps.
+     Previously this was set to pure black, which caused a visible strip
+     between sections when the page content didn't fill the viewport. */
+  background: #0f172a;
   -webkit-font-smoothing: antialiased;
   scroll-behavior: smooth;
 }
