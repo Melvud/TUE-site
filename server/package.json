@@ -9,7 +9,7 @@
       "start": "next start"
     },
     "dependencies": {
-      "next": "^15.1.0",
+      "next": "^15.5.4",
       "react": "^19.0.0",
       "react-dom": "^19.0.0",
   
@@ -20,6 +20,7 @@
       "@payloadcms/db-postgres": "^3.58.0",
       "graphql": "^16.9.0",
       "sharp": "^0.33.4",
+      "nodemailer": "^6.9.14",
   
       "typescript": "^5.6.3",
       "@types/node": "^20.14.12",
