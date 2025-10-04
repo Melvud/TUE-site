@@ -16,7 +16,7 @@ export const Home: GlobalConfig = {
           name: 'image',
           type: 'upload',
           relationTo: 'media',
-          required: true,
+          required: false, // ← Изменили с true на false
           admin: {
             description: 'Hero background image',
           },

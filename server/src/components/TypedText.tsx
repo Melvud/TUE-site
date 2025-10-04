@@ -13,7 +13,7 @@ type Props = {
 }
 
 export default function TypedText({
-  words,
+  words = [], // ← Дефолтное значение
   typeSpeed = 45,
   deleteSpeed = 28,
   pause = 1100,
@@ -26,7 +26,7 @@ export default function TypedText({
   const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
-    if (!words.length) return
+    if (!words || !words.length) return // ← Защита
     const current = words[wordIndex]
 
     if (!deleting && subIndex === current.length) {
@@ -50,7 +50,7 @@ export default function TypedText({
     return () => clearTimeout(t)
   }, [subIndex, deleting, wordIndex, words, typeSpeed, deleteSpeed, pause, loop])
 
-  const text = words.length ? words[wordIndex].slice(0, subIndex) : ''
+  const text = words && words.length ? words[wordIndex]?.slice(0, subIndex) || '' : ''
 
   return (
     <span className={className}>

@@ -11,7 +11,7 @@ export const About: GlobalConfig = {
     {
       name: 'sections',
       type: 'array',
-      required: true,
+      required: false, // ← Сделали опциональным
       fields: [
         {
           name: 'layout',
@@ -37,7 +37,7 @@ export const About: GlobalConfig = {
           name: 'image',
           type: 'upload',
           relationTo: 'media',
-          required: true,
+          required: false, // ← Изменили с true на false
         },
       ],
     },

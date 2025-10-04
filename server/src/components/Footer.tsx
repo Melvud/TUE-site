@@ -9,14 +9,20 @@ const NAV_LINKS = [
 ]
 
 const LinkedInIcon = () => (
-  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+  <svg
+    className="w-6 h-6"
+    fill="currentColor"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden="true"
+  >
     <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
   </svg>
 )
 
 export default function Footer() {
   return (
-    <footer className="bg-slate-900 border-t border-slate-800 mt-20">
+    <footer className="bg-slate-900 border-t border-slate-800">
       <div className="container mx-auto px-6 py-8">
         <div className="flex flex-col md:flex-row justify-between items-center text-center md:text-left">
           <div className="mb-4 md:mb-0">
@@ -29,25 +35,34 @@ export default function Footer() {
           </div>
 
           <div className="flex flex-col md:flex-row items-center">
-            <div className="flex space-x-6 mb-4 md:mb-0 md:mr-8">
-              {NAV_LINKS.map(link => (
-                <Link key={link.name} href={link.path} className="text-slate-400 hover:text-cyan-400 transition-colors">
+            <nav className="flex space-x-6 mb-4 md:mb-0 md:mr-8">
+              {NAV_LINKS.map((link) => (
+                <Link
+                  key={link.name}
+                  href={link.path}
+                  className="text-slate-400 hover:text-cyan-400 transition-colors"
+                >
                   {link.name}
                 </Link>
               ))}
-            </div>
-            
-              <a href="https://www.linkedin.com/company/photonics-society-eindhoven/"
+            </nav>
+
+            <a
+              href="https://www.linkedin.com/company/photonics-society-eindhoven/"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-slate-400 hover:text-cyan-400 transition-colors">
+              className="text-slate-400 hover:text-cyan-400 transition-colors"
+              aria-label="LinkedIn"
+            >
               <LinkedInIcon />
             </a>
           </div>
         </div>
 
         <div className="text-center text-slate-500 mt-8 pt-8 border-t border-slate-800">
-          <p>&copy; {new Date().getFullYear()} Photonics Society Eindhoven. All rights reserved.</p>
+          <p>
+            &copy; {new Date().getFullYear()} Photonics Society Eindhoven. All rights reserved.
+          </p>
         </div>
       </div>
     </footer>
