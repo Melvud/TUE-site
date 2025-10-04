@@ -108,7 +108,6 @@ server.get('/db-health', async (_req, res) => {
 // ================================================================
 
 // ---------- uploads (локальное хранение)
-import { fileURLToPath as _f } from 'url' // тишина TS
 const UPLOADS_DIR = path.join(__dirname, 'uploads')
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true })
 const storage = multer.diskStorage({
@@ -146,20 +145,28 @@ await (async () => {
   }
   await nextApp.prepare()
 
-  // Передаём в Next все Payload-маршруты
-  server.all(payloadPaths, (req, res) => {
+  // === ВАЖНО: сначала обслуживаем ассеты Next ===
+  server.all(/^\/_next\/.*/, (req, res) => {
+    console.log(`[${req.id}] -> Next asset: ${req.method} ${req.originalUrl}`)
     return handle(req, res)
   })
+  // Часто Next генерирует эти файлы — тоже отдаём через Next
+  server.all(/^\/favicon\.ico$/, (req, res) => handle(req, res))
+  server.all(/^\/robots\.txt$/, (req, res) => handle(req, res))
+  server.all(/^\/sitemap\.xml$/, (req, res) => handle(req, res))
+
+  // Затем — все Payload/Next маршруты приложения
+  server.all(payloadPaths, (req, res) => handle(req, res))
 
   // ---------- SPA фронт из /dist
   const projectRoot = path.resolve(__dirname, '..')
   const distPath = path.resolve(projectRoot, 'dist')
   const indexFile = path.join(distPath, 'index.html')
 
-  // 1) ассеты
+  // 1) ассеты SPA
   server.use(express.static(distPath, { index: false, maxAge: dev ? 0 : '1d' }))
 
-  // 2) fallback для SPA
+  // 2) fallback для SPA (все остальные HTML-запросы)
   server.get('*', (req, res, nextFn) => {
     const accept = req.headers.accept || ''
     const isHTML = accept.includes('text/html')
@@ -174,7 +181,6 @@ await (async () => {
   })
 
   // ---------- глобальный обработчик ошибок Express
-  // (чтобы не терять трассировку)
   // eslint-disable-next-line no-unused-vars
   server.use((err, req, res, _next) => {
     console.error(`[${req.id}] ❌ Unhandled error:`, err?.stack || err)
