@@ -1,12 +1,34 @@
 import type { CollectionConfig } from 'payload'
 
+// Access control utilities. These import the same helpers used in the
+// original TUE‑site repository. They restrict who can read or mutate
+// pages based on authentication status and publish state.
 import { authenticated } from '../../access/authenticated'
 import { authenticatedOrPublished } from '../../access/authenticatedOrPublished'
+
+// Import the existing block configs used by the site. These mirror
+// imports in the upstream repository and power common page layouts such
+// as call‑to‑action banners, rich content sections, image/media
+// showcases, archives and forms.
 import { Archive } from '../../blocks/ArchiveBlock/config'
 import { CallToAction } from '../../blocks/CallToAction/config'
 import { Content } from '../../blocks/Content/config'
 import { FormBlock } from '../../blocks/Form/config'
 import { MediaBlock } from '../../blocks/MediaBlock/config'
+
+// Import our new blocks which enable editors to control marquee text
+// on the homepage, pair images with text, and manage the Join Us
+// section. Each block exposes a `slug` and `interfaceName` that
+// Payload uses to generate its admin UI and type definitions.
+import { Marquee } from '../../blocks/Marquee/config'
+import { TextImage } from '../../blocks/TextImage/config'
+import { JoinUs } from '../../blocks/JoinUs/config'
+
+// Other utilities used to define page fields. These are unchanged
+// relative to the upstream repository and provide fields for hero
+// sections, slugs, published timestamps and SEO metadata. The
+// `generatePreviewPath` helper constructs a draft preview URL for
+// live preview and previews in the admin.
 import { hero } from '@/heros/config'
 import { slugField } from '@/fields/slug'
 import { populatePublishedAt } from '../../hooks/populatePublishedAt'
@@ -21,6 +43,12 @@ import {
   PreviewField,
 } from '@payloadcms/plugin-seo/fields'
 
+// The Pages collection defines how individual pages are stored in
+// Payload. It includes access rules, admin UI configuration and the
+// layout field which allows editors to build pages from a selection
+// of blocks. Here we extend the blocks array to include Marquee,
+// TextImage and JoinUs so that content editors can pick them when
+// constructing pages.
 export const Pages: CollectionConfig<'pages'> = {
   slug: 'pages',
   access: {
@@ -45,7 +73,6 @@ export const Pages: CollectionConfig<'pages'> = {
           collection: 'pages',
           req,
         })
-
         return path
       },
     },
@@ -75,7 +102,21 @@ export const Pages: CollectionConfig<'pages'> = {
             {
               name: 'layout',
               type: 'blocks',
-              blocks: [CallToAction, Content, MediaBlock, Archive, FormBlock],
+              // Here we register all available blocks. Editors can
+              // assemble pages by choosing from this list. We've
+              // appended Marquee, TextImage and JoinUs to enable
+              // editable marquees, alternating text/image sections and
+              // configurable Join Us sections.
+              blocks: [
+                CallToAction,
+                Content,
+                MediaBlock,
+                Archive,
+                FormBlock,
+                Marquee,
+                TextImage,
+                JoinUs,
+              ],
               required: true,
               admin: {
                 initCollapsed: true,
@@ -99,12 +140,10 @@ export const Pages: CollectionConfig<'pages'> = {
             MetaImageField({
               relationTo: 'media',
             }),
-
             MetaDescriptionField({}),
             PreviewField({
               // if the `generateUrl` function is configured
               hasGenerateFn: true,
-
               // field paths to match the target field for data
               titlePath: 'meta.title',
               descriptionPath: 'meta.description',
