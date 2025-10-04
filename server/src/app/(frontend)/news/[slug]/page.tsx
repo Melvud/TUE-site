@@ -21,12 +21,14 @@ export default async function NewsDetailPage({
     where: { slug: { equals: slug } },
     limit: 1,
     draft: isEnabled,
+    depth: 2, // ensure cover + upload nodes have url
   })
 
   const article = newsData.docs[0]
   if (!article) return notFound()
 
-  const coverUrl = typeof article.cover === 'object' && article.cover?.url ? article.cover.url : ''
+  const coverUrl =
+    typeof article.cover === 'object' && article.cover?.url ? article.cover.url : ''
   const contentHtml = serializeLexical(article.content)
 
   return (
@@ -34,13 +36,14 @@ export default async function NewsDetailPage({
       <div className="pt-28 pb-10 text-center">
         <h1 className="text-4xl font-extrabold">{article.title}</h1>
         <p className="text-slate-300 mt-2">
-          {new Date(article.date).toLocaleDateString()}
+          {article.date ? new Date(article.date).toLocaleDateString('en-US') : ''}
           {article.author ? ` • ${article.author}` : ''}
         </p>
       </div>
 
       <Section>
         {coverUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
           <img src={coverUrl} alt={article.title} className="w-full rounded-lg mb-6" />
         )}
         {article.summary && <p className="text-slate-300 mb-4">{article.summary}</p>}

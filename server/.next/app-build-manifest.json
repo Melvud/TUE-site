@@ -1,22 +1,5 @@
 {
   "pages": {
-    "/(frontend)/layout": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/css/app/(frontend)/layout.css",
-      "static/chunks/app/(frontend)/layout.js"
-    ],
-    "/(frontend)/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(frontend)/page.js"
-    ],
-    "/(payload)/api/[...slug]/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/css/app/(payload)/api/[...slug]/route.css",
-      "static/chunks/app/(payload)/api/[...slug]/route.js"
-    ],
     "/(payload)/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -35,15 +18,47 @@
       "static/css/app/(payload)/admin/[[...segments]]/page.css",
       "static/chunks/app/(payload)/admin/[[...segments]]/page.js"
     ],
-    "/(frontend)/about/page": [
+    "/(payload)/api/[...slug]/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/(frontend)/about/page.js"
+      "static/css/app/(payload)/api/[...slug]/route.css",
+      "static/chunks/app/(payload)/api/[...slug]/route.js"
+    ],
+    "/(frontend)/layout": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/css/app/(frontend)/layout.css",
+      "static/chunks/app/(frontend)/layout.js"
+    ],
+    "/(frontend)/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(frontend)/page.js"
     ],
     "/(frontend)/join/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/(frontend)/join/page.js"
+    ],
+    "/(frontend)/contact/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(frontend)/contact/page.js"
+    ],
+    "/(frontend)/news/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(frontend)/news/page.js"
+    ],
+    "/(frontend)/events/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(frontend)/events/page.js"
+    ],
+    "/(frontend)/about/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(frontend)/about/page.js"
     ]
   }
 }

@@ -57,7 +57,7 @@ export default async function EventDetailPage({
       </header>
 
       {coverUrl && (
-        <div className="max-w-6xl mx-auto px-4">
+        <div className="max-w-3xl mx-auto px-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={coverUrl}

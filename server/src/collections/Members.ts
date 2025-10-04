@@ -4,6 +4,9 @@ export const Members: CollectionConfig = {
   slug: 'members',
   admin: {
     useAsTitle: 'name',
+    livePreview: {
+      url: () => `${process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'}?preview=true`,
+    },
     defaultColumns: ['name', 'role', 'order', 'updatedAt'],
   },
   access: {

@@ -4,6 +4,9 @@ export const MembersPast: CollectionConfig = {
   slug: 'membersPast',
   admin: {
     useAsTitle: 'name',
+    livePreview: {
+      url: () => `${process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'}?preview=true`,
+    },
     group: 'Archive',
   },
   access: {

@@ -11,42 +11,32 @@ export default async function JoinUsPage() {
   const { isEnabled } = await draftMode()
   const payload = await getPayload({ config })
 
-  const joinData = await payload.findGlobal({
+  const join = await payload.findGlobal({
     slug: 'join',
     draft: isEnabled,
+    depth: 2, // чтобы в content для upload-узлов были url/поля
   })
 
-  const introHtml = serializeLexical(joinData.introText)
-  const detailsHtml = serializeLexical(joinData.detailsHtml)
-  
-  // Правильный маппинг полей
-  const formFields = (joinData.formFields || []).map((field: any) => ({
-    id: field.id || crypto.randomUUID(),
-    name: field.name || '',
-    label: field.label || '',
-    type: field.type || 'text',
-    required: field.required || false,
-    placeholder: field.placeholder || '',
-    options: field.options?.map((opt: any) => opt.value || opt) || undefined,
-  }))
+  const html = join?.content ? serializeLexical(join.content as any) : ''
+
+  const formFields = Array.isArray((join as any)?.formFields)
+    ? (join as any).formFields
+    : []
 
   return (
     <div className="bg-slate-900 text-white">
-      <div className="pt-28 pb-10 text-center">
+      <header className="pt-28 pb-10 text-center">
         <h1 className="text-4xl font-extrabold">Join Us</h1>
-      </div>
+      </header>
 
       <Section>
         <div className="max-w-4xl mx-auto">
-          <div
-            className="prose prose-invert max-w-none mb-8"
-            dangerouslySetInnerHTML={{ __html: introHtml }}
-          />
-
-          <div
-            className="prose prose-invert max-w-none mb-10"
-            dangerouslySetInnerHTML={{ __html: detailsHtml }}
-          />
+          {html && (
+            <div
+              className="prose prose-invert max-w-none mb-10"
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          )}
 
           <JoinForm fields={formFields} />
         </div>

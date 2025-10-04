@@ -1,106 +1,136 @@
 import type { CollectionConfig } from 'payload'
+import { lexicalEditor, UploadFeature } from '@payloadcms/richtext-lexical'
 
 export const Events: CollectionConfig = {
   slug: 'events',
+  labels: { singular: 'Event', plural: 'Events' },
   admin: {
     useAsTitle: 'title',
-    defaultColumns: ['title', 'date', 'published', 'updatedAt'],
-    livePreview: {
-      url: ({ data }) => {
-        if (data?.slug) {
-          return `${process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'}/events/${data.slug}?preview=true`
-        }
-        return '' // ← Вернуть пустую строку вместо undefined
-      },
-    },
+    defaultColumns: ['title', 'date', 'latest', 'published'],
   },
   access: {
-    read: ({ req: { user } }) => {
-      if (user) return true
-      return {
-        published: { equals: true },
-      }
-    },
+    read: () => true, // public
   },
   fields: [
     {
       name: 'title',
+      label: 'Title',
       type: 'text',
       required: true,
     },
     {
       name: 'slug',
+      label: 'Slug',
       type: 'text',
       required: true,
       unique: true,
-      admin: {
-        position: 'sidebar',
-      },
+      admin: { placeholder: 'e.g. photonics-day-2026' },
     },
     {
       name: 'date',
-      type: 'text',
+      label: 'Date',
+      type: 'date',
       required: true,
-      admin: {
-        description: 'Single date (YYYY-MM-DD) or range (YYYY-MM-DD..YYYY-MM-DD)',
-      },
-    },
-    {
-      name: 'cover',
-      type: 'upload',
-      relationTo: 'media',
-      required: false,
+      admin: { date: {
+        pickerAppearance: 'dayOnly', // календарь без времени
+        displayFormat: 'yyyy-MM-dd', // как видеть в админке
+      }},
     },
     {
       name: 'summary',
+      label: 'Summary',
       type: 'textarea',
-      admin: {
-        description: 'Brief description shown on cards',
-      },
     },
     {
-      name: 'content',
-      type: 'richText',
-      required: true,
+      name: 'description',
+      label: 'Description',
+      type: 'textarea',
     },
     {
       name: 'googleFormUrl',
+      label: 'Google Form URL',
       type: 'text',
-      admin: {
-        description: 'Registration link',
-      },
     },
     {
-      name: 'published',
-      type: 'checkbox',
-      defaultValue: false,
-      admin: {
-        position: 'sidebar',
-      },
+      name: 'cover',
+      label: 'Cover',
+      type: 'upload',
+      relationTo: 'media', // <-- change if your media collection slug differs
     },
     {
-      name: 'latest',
-      type: 'checkbox',
-      defaultValue: false,
-      admin: {
-        position: 'sidebar',
-        description: 'Mark as featured/next event',
-      },
+      name: 'content',
+      label: 'Content',
+      type: 'richText',
+      editor: lexicalEditor({
+        features: ({ defaultFeatures }) => [
+          ...defaultFeatures,
+          UploadFeature({
+            collections: {
+              media: {
+                fields: [
+                  {
+                    name: 'align',
+                    label: 'Alignment',
+                    type: 'select',
+                    defaultValue: 'center',
+                    options: [
+                      { label: 'Left', value: 'left' },
+                      { label: 'Center', value: 'center' },
+                      { label: 'Right', value: 'right' },
+                    ],
+                  },
+                  {
+                    name: 'width',
+                    label: 'Width (%)',
+                    type: 'select',
+                    defaultValue: '100',
+                    options: [
+                      { label: '25%', value: '25' },
+                      { label: '50%', value: '50' },
+                      { label: '75%', value: '75' },
+                      { label: '100%', value: '100' },
+                    ],
+                  },
+                  {
+                    name: 'alt',
+                    label: 'Alt text',
+                    type: 'text',
+                  },
+                  {
+                    name: 'caption',
+                    label: 'Caption',
+                    type: 'text',
+                    admin: { placeholder: 'Optional caption' },
+                  },
+                ],
+              },
+            },
+          }),
+        ],
+      }),
     },
     {
-      name: 'publishAt',
-      type: 'date',
-      admin: {
-        position: 'sidebar',
-        description: 'Schedule publication',
-      },
+      type: 'row',
+      fields: [
+        {
+          name: 'latest',
+          label: 'Latest',
+          type: 'checkbox',
+          defaultValue: false,
+        },
+        {
+          name: 'published',
+          label: 'Published',
+          type: 'checkbox',
+          defaultValue: false,
+        },
+        {
+          name: 'publishAt',
+          label: 'Publish At',
+          type: 'date',
+          admin: { position: 'sidebar', date: { pickerAppearance: 'dayAndTime' } },
+        },
+      ],
     },
   ],
-  versions: {
-    drafts: {
-      autosave: {
-        interval: 375,
-      },
-    },
-  },
 }

@@ -180,16 +180,12 @@ export interface Event {
   id: number;
   title: string;
   slug: string;
-  /**
-   * Single date (YYYY-MM-DD) or range (YYYY-MM-DD..YYYY-MM-DD)
-   */
   date: string;
-  cover?: (number | null) | Media;
-  /**
-   * Brief description shown on cards
-   */
   summary?: string | null;
-  content: {
+  description?: string | null;
+  googleFormUrl?: string | null;
+  cover?: (number | null) | Media;
+  content?: {
     root: {
       type: string;
       children: {
@@ -203,23 +199,12 @@ export interface Event {
       version: number;
     };
     [k: string]: unknown;
-  };
-  /**
-   * Registration link
-   */
-  googleFormUrl?: string | null;
-  published?: boolean | null;
-  /**
-   * Mark as featured/next event
-   */
+  } | null;
   latest?: boolean | null;
-  /**
-   * Schedule publication
-   */
+  published?: boolean | null;
   publishAt?: string | null;
   updatedAt: string;
   createdAt: string;
-  _status?: ('draft' | 'published') | null;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -229,14 +214,10 @@ export interface News {
   id: number;
   title: string;
   slug: string;
-  date: string;
-  author?: string | null;
-  cover?: (number | null) | Media;
-  /**
-   * Brief summary for cards
-   */
+  date?: string | null;
   summary?: string | null;
-  content: {
+  cover?: (number | null) | Media;
+  content?: {
     root: {
       type: string;
       children: {
@@ -250,12 +231,11 @@ export interface News {
       version: number;
     };
     [k: string]: unknown;
-  };
+  } | null;
   published?: boolean | null;
   publishAt?: string | null;
   updatedAt: string;
   createdAt: string;
-  _status?: ('draft' | 'published') | null;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -412,16 +392,16 @@ export interface EventsSelect<T extends boolean = true> {
   title?: T;
   slug?: T;
   date?: T;
-  cover?: T;
   summary?: T;
-  content?: T;
+  description?: T;
   googleFormUrl?: T;
-  published?: T;
+  cover?: T;
+  content?: T;
   latest?: T;
+  published?: T;
   publishAt?: T;
   updatedAt?: T;
   createdAt?: T;
-  _status?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -431,15 +411,13 @@ export interface NewsSelect<T extends boolean = true> {
   title?: T;
   slug?: T;
   date?: T;
-  author?: T;
-  cover?: T;
   summary?: T;
+  cover?: T;
   content?: T;
   published?: T;
   publishAt?: T;
   updatedAt?: T;
   createdAt?: T;
-  _status?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -561,10 +539,7 @@ export interface About {
  */
 export interface Join {
   id: number;
-  /**
-   * Introduction shown above the form
-   */
-  introText: {
+  content?: {
     root: {
       type: string;
       children: {
@@ -578,43 +553,23 @@ export interface Join {
       version: number;
     };
     [k: string]: unknown;
-  };
-  /**
-   * Detailed membership information (tiers, benefits, etc.)
-   */
-  detailsHtml: {
-    root: {
-      type: string;
-      children: {
-        type: any;
-        version: number;
-        [k: string]: unknown;
-      }[];
-      direction: ('ltr' | 'rtl') | null;
-      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
-      indent: number;
-      version: number;
-    };
-    [k: string]: unknown;
-  };
-  formFields: {
-    /**
-     * Field name (used in form data)
-     */
-    name: string;
-    label: string;
-    type: 'text' | 'email' | 'textarea' | 'select';
-    required?: boolean | null;
-    placeholder?: string | null;
-    options?:
-      | {
-          value: string;
-          id?: string | null;
-        }[]
-      | null;
-    id?: string | null;
-  }[];
-  _status?: ('draft' | 'published') | null;
+  } | null;
+  formFields?:
+    | {
+        name: string;
+        label: string;
+        type: 'text' | 'email' | 'textarea' | 'select';
+        placeholder?: string | null;
+        required?: boolean | null;
+        options?:
+          | {
+              value: string;
+              id?: string | null;
+            }[]
+          | null;
+        id?: string | null;
+      }[]
+    | null;
   updatedAt?: string | null;
   createdAt?: string | null;
 }
@@ -663,16 +618,15 @@ export interface AboutSelect<T extends boolean = true> {
  * via the `definition` "join_select".
  */
 export interface JoinSelect<T extends boolean = true> {
-  introText?: T;
-  detailsHtml?: T;
+  content?: T;
   formFields?:
     | T
     | {
         name?: T;
         label?: T;
         type?: T;
-        required?: T;
         placeholder?: T;
+        required?: T;
         options?:
           | T
           | {
@@ -681,7 +635,6 @@ export interface JoinSelect<T extends boolean = true> {
             };
         id?: T;
       };
-  _status?: T;
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;

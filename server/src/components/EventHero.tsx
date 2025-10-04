@@ -2,10 +2,12 @@ import Link from 'next/link'
 
 type EventType = {
   id?: string | number
+  slug?: string
   title: string
   date?: string
   summary?: string
   description?: string
+  cover?: { url?: string } | string | null
   coverUrl?: string
   image?: string
   images?: string[]
@@ -18,7 +20,11 @@ type Props = {
   showBottomRegister?: boolean
 }
 
-export default function EventHero({ event, className, showBottomRegister = true }: Props) {
+export default function EventHero({
+  event,
+  className,
+  showBottomRegister = true,
+}: Props) {
   if (!event) return null
 
   const dateStr = (() => {
@@ -32,9 +38,16 @@ export default function EventHero({ event, className, showBottomRegister = true 
     }
   })()
 
-  const img = event.coverUrl || event.image || event.images?.[0] || ''
+  const coverFromObject =
+    typeof event.cover === 'object' && event.cover?.url ? event.cover.url : ''
+  const img = coverFromObject || event.coverUrl || event.image || event.images?.[0] || ''
+
+  const to =
+    event?.slug ? `/events/${event.slug}` :
+    event?.id   ? `/events/${event.id}`   :
+    undefined
+
   const desc = event.summary || event.description || ''
-  const to = event?.id ? `/events/${event.id}` : undefined
 
   return (
     <section className={className ?? ''}>
@@ -85,7 +98,8 @@ export default function EventHero({ event, className, showBottomRegister = true 
         </div>
       </div>
 
-      <div className="mt-8 rounded-2xl overflow-hidden bg-slate-900 border border-slate-700 max-w-6xl mx-auto">
+      {/* image container ~1.5x smaller: 6xl → 3xl (72rem → 48rem) */}
+      <div className="mt-8 rounded-2xl overflow-hidden bg-slate-900 border border-slate-700 max-w-3xl mx-auto">
         {img ? (
           to ? (
             <Link href={to} aria-label={event.title}>
