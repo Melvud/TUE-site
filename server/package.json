@@ -54,13 +54,7 @@
     "sharp": "0.34.2",
     "tailwind-merge": "^2.3.0",
     "tailwindcss-animate": "^1.0.7",
-    "@payloadcms/db-postgres": "3.58.0",
-    "cors": "^2.8.5",
-    "express": "^4.19.2",
-    "morgan": "^1.10.0",
-    "multer": "^1.4.5-lts.1",
-    "pg": "^8.11.3",
-    "uuid": "^9.0.1"
+    "@payloadcms/db-postgres": "3.58.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -84,7 +78,8 @@
     "tailwindcss": "^3.4.3",
     "typescript": "5.7.3",
     "vite-tsconfig-paths": "5.1.4",
-    "vitest": "3.2.3"
+    "vitest": "3.2.3",
+    "cross-env": "^7.0.3"
   },
   "engines": {
     "node": "^18.20.2 || >=20.9.0",

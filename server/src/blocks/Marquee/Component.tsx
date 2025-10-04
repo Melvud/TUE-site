@@ -1,19 +1,21 @@
-import React from 'react'
+'use client';
 
-import type { MarqueeBlock } from '@/payload-types'
-import RichText from '@/components/RichText'
+import React from 'react';
+
+import type { MarqueeBlock } from '@/payload-types';
+import RichText from '@/components/RichText';
 
 /**
  * MarqueeBlock renders an animated horizontal scrolling ticker. It
- * accepts an array of rich‑text items and an optional speed
+ * accepts an array of rich-text items and an optional speed
  * controlling the scroll duration. The animation loops infinitely.
  */
 export const MarqueeBlock: React.FC<MarqueeBlock> = ({ items, speed = 20 }) => {
-  if (!items || items.length === 0) return null
+  if (!items || items.length === 0) return null;
 
   // Convert the provided speed (in seconds) to a CSS duration. If the
   // editor supplies an invalid number, fall back to 20 seconds.
-  const animationDuration = `${typeof speed === 'number' && speed > 0 ? speed : 20}s`
+  const animationDuration = `${typeof speed === 'number' && speed > 0 ? speed : 20}s`;
 
   return (
     <div className="w-full overflow-hidden bg-accent text-primary py-2">
@@ -29,8 +31,7 @@ export const MarqueeBlock: React.FC<MarqueeBlock> = ({ items, speed = 20 }) => {
           </div>
         ))}
       </div>
-      {/* Inline keyframes definition. Using styled-jsx keeps the CSS scoped
-          to this component. */}
+      {/* styled-jsx работает только в Client Component */}
       <style jsx>{`
         @keyframes marquee {
           0% {
@@ -48,5 +49,5 @@ export const MarqueeBlock: React.FC<MarqueeBlock> = ({ items, speed = 20 }) => {
         }
       `}</style>
     </div>
-  )
-}
+  );
+};
