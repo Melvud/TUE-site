@@ -1,20 +1,28 @@
-import { withPayload } from '@payloadcms/next/withPayload'
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: false,
-  // Убираем experimental.reactCompiler - не обязательно для работы
-  webpack: (config, { isServer }) => {
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        net: false,
-        tls: false,
-      }
-    }
-    return config
-  },
-}
+  // Подсказываем Next где "корень" трейсинга — серверная папка,
+  // чтобы не ругался на pnpm-lock.yaml в корне репо
+  outputFileTracingRoot: __dirname,
 
-export default withPayload(nextConfig)
+  // Важно для Payload admin (иначе часто белый экран из-за не транспилированных ESM)
+  transpilePackages: [
+    'payload',
+    '@payloadcms/next',
+    '@payloadcms/richtext-lexical',
+    '@faceless-ui/modal',
+    '@faceless-ui/scroll-info'
+  ],
+
+  // Иногда полезно, если встретится ESM/CJS мешанина в зависимости
+  // (раскомментируй при необходимости)
+  // experimental: {
+  //   esmExternals: 'loose'
+  // },
+};
+
+export default nextConfig;
