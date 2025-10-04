@@ -13,7 +13,7 @@ export const JoinSubmissions: CollectionConfig = {
   },
   access: {
     read: ({ req: { user } }) => !!user,
-    create: () => true, // Публичное создание через форму
+    create: () => true,
     update: ({ req: { user } }) => !!user,
     delete: ({ req: { user } }) => !!user,
   },
@@ -70,19 +70,31 @@ export const JoinSubmissions: CollectionConfig = {
       },
     },
     {
+      name: 'useCustomTemplate',
+      label: 'Customize Email',
+      type: 'checkbox',
+      defaultValue: false,
+      admin: {
+        description: 'Override default templates from Email Templates settings',
+      },
+    },
+    {
       name: 'acceptanceEmail',
-      label: 'Acceptance Email Template',
+      label: 'Acceptance Email',
       type: 'group',
       admin: {
         condition: (data) => data.status === 'accepted',
-        description: 'Email to send when accepting the application',
+        description: 'Email sent when accepting the application',
       },
       fields: [
         {
           name: 'subject',
           label: 'Subject',
           type: 'text',
-          defaultValue: '🎉 Welcome to Photonics Society Eindhoven!',
+          admin: {
+            placeholder: 'Uses default from Email Templates if empty',
+            condition: (data) => data.useCustomTemplate,
+          },
         },
         {
           name: 'body',
@@ -90,19 +102,9 @@ export const JoinSubmissions: CollectionConfig = {
           type: 'textarea',
           admin: {
             rows: 10,
-            placeholder: `Dear {{name}},
-
-Congratulations! We are pleased to inform you that your application to join Photonics Society Eindhoven has been accepted.
-
-Next steps:
-1. Join our LinkedIn group: [link]
-2. Check out upcoming events: [link]
-3. Get your free OPTICA subscription
-
-Welcome to the team!
-
-Best regards,
-PhE Team`,
+            placeholder: 'Uses default from Email Templates if empty',
+            description: 'Available: {{name}}, {{email}}',
+            condition: (data) => data.useCustomTemplate,
           },
         },
         {
@@ -129,18 +131,21 @@ PhE Team`,
     },
     {
       name: 'rejectionEmail',
-      label: 'Rejection Email Template',
+      label: 'Rejection Email',
       type: 'group',
       admin: {
         condition: (data) => data.status === 'rejected',
-        description: 'Email to send when rejecting the application',
+        description: 'Email sent when rejecting the application',
       },
       fields: [
         {
           name: 'subject',
           label: 'Subject',
           type: 'text',
-          defaultValue: 'Regarding your PhE application',
+          admin: {
+            placeholder: 'Uses default from Email Templates if empty',
+            condition: (data) => data.useCustomTemplate,
+          },
         },
         {
           name: 'body',
@@ -148,9 +153,9 @@ PhE Team`,
           type: 'textarea',
           admin: {
             rows: 8,
-            placeholder: `Dear {{name}},
-
-Thank you for your interest in Photonics Society Eindhoven...`,
+            placeholder: 'Uses default from Email Templates if empty',
+            description: 'Available: {{name}}, {{email}}',
+            condition: (data) => data.useCustomTemplate,
           },
         },
         {
@@ -168,32 +173,35 @@ Thank you for your interest in Photonics Society Eindhoven...`,
   hooks: {
     afterChange: [
       async ({ doc, previousDoc, req, operation }) => {
-        // Автоматическая отправка email при изменении статуса
         if (operation === 'update') {
           const statusChanged = previousDoc?.status !== doc.status
 
-          // Отправка acceptance email
+          // Acceptance email
           if (
             statusChanged &&
             doc.status === 'accepted' &&
-            doc.acceptanceEmail?.body &&
             !doc.acceptanceEmail?.sent
           ) {
             try {
-              // Динамический импорт для избежания проблем с Edge Runtime
-              const { sendTemplateEmail } = await import('@/lib/email')
+              const { sendAcceptanceEmail } = await import('@/lib/email')
               
-              const success = await sendTemplateEmail(
+              // Используем кастомный шаблон если указан, иначе из БД
+              const customTemplate = doc.useCustomTemplate && doc.acceptanceEmail?.subject && doc.acceptanceEmail?.body
+                ? {
+                    subject: doc.acceptanceEmail.subject,
+                    body: doc.acceptanceEmail.body,
+                  }
+                : undefined
+              
+              const success = await sendAcceptanceEmail(
                 doc.email,
-                doc.acceptanceEmail.subject || '🎉 Welcome to PhE!',
-                doc.acceptanceEmail.body,
-                { name: doc.name, email: doc.email }
+                doc.name,
+                customTemplate
               )
               
               if (success) {
                 console.log('✅ Acceptance email sent to:', doc.email)
                 
-                // Обновляем статус отправки
                 await req.payload.update({
                   collection: 'join-submissions',
                   id: doc.id,
@@ -211,21 +219,26 @@ Thank you for your interest in Photonics Society Eindhoven...`,
             }
           }
 
-          // Отправка rejection email
+          // Rejection email
           if (
             statusChanged &&
             doc.status === 'rejected' &&
-            doc.rejectionEmail?.body &&
             !doc.rejectionEmail?.sent
           ) {
             try {
-              const { sendTemplateEmail } = await import('@/lib/email')
+              const { sendRejectionEmail } = await import('@/lib/email')
               
-              const success = await sendTemplateEmail(
+              const customTemplate = doc.useCustomTemplate && doc.rejectionEmail?.subject && doc.rejectionEmail?.body
+                ? {
+                    subject: doc.rejectionEmail.subject,
+                    body: doc.rejectionEmail.body,
+                  }
+                : undefined
+              
+              const success = await sendRejectionEmail(
                 doc.email,
-                doc.rejectionEmail.subject || 'Regarding your application',
-                doc.rejectionEmail.body,
-                { name: doc.name, email: doc.email }
+                doc.name,
+                customTemplate
               )
               
               if (success) {

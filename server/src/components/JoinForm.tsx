@@ -3,25 +3,29 @@
 import { useState } from 'react'
 
 type Field = {
-  id: string
+  id?: string
   name: string
   label: string
   type: string
-  required: boolean
-  placeholder?: string
-  options?: string[]
+  required?: boolean
+  placeholder?: string | null
+  options?: Array<{ value: string; id?: string }> | null
 }
 
-export default function JoinForm({ fields }: { fields: Field[] }) {
+export default function JoinForm({ fields = [] }: { fields?: Field[] }) {
   const [sent, setSent] = useState<null | 'ok' | string>(null)
   const [busy, setBusy] = useState(false)
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    
+    // ✅ Сохраняем ссылку на форму ДО асинхронной операции
+    const form = e.currentTarget
+    
     setBusy(true)
     setSent(null)
 
-    const formData = Object.fromEntries(new FormData(e.currentTarget).entries())
+    const formData = Object.fromEntries(new FormData(form).entries())
 
     try {
       const res = await fetch('/api/forms/submit', {
@@ -37,7 +41,7 @@ export default function JoinForm({ fields }: { fields: Field[] }) {
       if (!res.ok) throw new Error('Failed to submit')
 
       setSent('ok')
-      e.currentTarget.reset()
+      form.reset() // ✅ Используем сохраненную ссылку
     } catch (err: any) {
       setSent(err?.message ?? 'Failed to submit')
     } finally {
@@ -48,14 +52,16 @@ export default function JoinForm({ fields }: { fields: Field[] }) {
   return (
     <form onSubmit={onSubmit} className="max-w-2xl mx-auto space-y-6">
       {fields.map((field) => {
+        const fieldKey = field.id || field.name
+        
         if (field.type === 'textarea') {
           return (
-            <div key={field.id}>
+            <div key={fieldKey}>
               <label className="block text-sm text-slate-300 mb-1">{field.label}</label>
               <textarea
                 name={field.name}
                 required={field.required}
-                placeholder={field.placeholder}
+                placeholder={field.placeholder || ''}
                 className="w-full bg-slate-800 p-3 rounded text-white"
                 rows={4}
               />
@@ -65,7 +71,7 @@ export default function JoinForm({ fields }: { fields: Field[] }) {
 
         if (field.type === 'select' && field.options) {
           return (
-            <div key={field.id}>
+            <div key={fieldKey}>
               <label className="block text-sm text-slate-300 mb-1">{field.label}</label>
               <select
                 name={field.name}
@@ -76,24 +82,28 @@ export default function JoinForm({ fields }: { fields: Field[] }) {
                 <option value="" disabled>
                   Select...
                 </option>
-                {field.options.map((opt, i) => (
-                  <option key={i} value={opt}>
-                    {opt}
-                  </option>
-                ))}
+                {field.options.map((opt, i) => {
+                  const value = typeof opt === 'string' ? opt : opt.value
+                  const key = typeof opt === 'object' && opt.id ? opt.id : i
+                  return (
+                    <option key={key} value={value}>
+                      {value}
+                    </option>
+                  )
+                })}
               </select>
             </div>
           )
         }
 
         return (
-          <div key={field.id}>
+          <div key={fieldKey}>
             <label className="block text-sm text-slate-300 mb-1">{field.label}</label>
             <input
               name={field.name}
               type={field.type}
               required={field.required}
-              placeholder={field.placeholder}
+              placeholder={field.placeholder || ''}
               className="w-full bg-slate-800 p-3 rounded text-white"
             />
           </div>

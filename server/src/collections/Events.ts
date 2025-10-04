@@ -35,8 +35,8 @@ export const Events: CollectionConfig = {
       type: 'date',
       required: true,
       admin: { date: {
-        pickerAppearance: 'dayOnly', // календарь без времени
-        displayFormat: 'yyyy-MM-dd', // как видеть в админке
+        pickerAppearance: 'dayOnly',
+        displayFormat: 'yyyy-MM-dd',
       }},
     },
     {
@@ -58,7 +58,7 @@ export const Events: CollectionConfig = {
       name: 'cover',
       label: 'Cover',
       type: 'upload',
-      relationTo: 'media', // <-- change if your media collection slug differs
+      relationTo: 'media',
     },
     {
       name: 'content',
@@ -120,6 +120,9 @@ export const Events: CollectionConfig = {
           label: 'Latest',
           type: 'checkbox',
           defaultValue: false,
+          admin: {
+            description: '⭐ Featured event on Events page (only one can be Latest)',
+          },
         },
         {
           name: 'published',
@@ -136,4 +139,56 @@ export const Events: CollectionConfig = {
       ],
     },
   ],
+  hooks: {
+    beforeChange: [
+      async ({ data, req, operation }) => {
+        // Если устанавливается latest: true
+        if (data.latest === true) {
+          // Снимаем latest со всех остальных событий
+          try {
+            const allEvents = await req.payload.find({
+              collection: 'events',
+              where: {
+                latest: { equals: true },
+              },
+              limit: 1000,
+            })
+
+            // Обновляем все события, кроме текущего
+            for (const event of allEvents.docs) {
+              if (operation === 'update' && event.id === data.id) {
+                // Пропускаем текущее событие при update
+                continue
+              }
+              if (operation === 'create') {
+                // При создании снимаем latest со всех
+                await req.payload.update({
+                  collection: 'events',
+                  id: event.id,
+                  data: {
+                    latest: false,
+                  },
+                })
+              } else if (event.id !== data.id) {
+                // При обновлении снимаем latest со всех, кроме текущего
+                await req.payload.update({
+                  collection: 'events',
+                  id: event.id,
+                  data: {
+                    latest: false,
+                  },
+                })
+              }
+            }
+
+            console.log('✅ Latest flag updated - only one event is now Latest')
+          } catch (error) {
+            console.error('Failed to update latest flags:', error)
+          }
+        }
+
+        return data
+      },
+    ],
+  },
 }

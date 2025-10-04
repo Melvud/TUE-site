@@ -14,14 +14,13 @@ export default async function JoinUsPage() {
   const join = await payload.findGlobal({
     slug: 'join',
     draft: isEnabled,
-    depth: 2, // чтобы в content для upload-узлов были url/поля
+    depth: 2,
   })
 
   const html = join?.content ? serializeLexical(join.content as any) : ''
 
-  const formFields = Array.isArray((join as any)?.formFields)
-    ? (join as any).formFields
-    : []
+  // Безопасное получение formFields с fallback
+  const formFields = Array.isArray(join?.formFields) ? join.formFields : []
 
   return (
     <div className="bg-slate-900 text-white">

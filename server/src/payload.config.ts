@@ -20,6 +20,7 @@ import { About } from './globals/About'
 import { JoinUs } from './globals/JoinUs'
 import { Contact } from './globals/Contact'
 import { EmailSettings } from './globals/EmailSettings'
+import { EmailTemplates } from './globals/EmailTemplates' // ← Добавить
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -89,7 +90,14 @@ export default buildConfig({
     ContactSubmissions,
     JoinSubmissions,
   ],
-  globals: [Home, About, JoinUs, Contact, EmailSettings],
+  globals: [
+    Home, 
+    About, 
+    JoinUs, 
+    Contact, 
+    EmailSettings,
+    EmailTemplates, // ← Добавить
+  ],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {

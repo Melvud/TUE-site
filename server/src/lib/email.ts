@@ -1,359 +1,115 @@
-import nodemailer from 'nodemailer'
-import type { Transporter } from 'nodemailer'
-
-type EmailSettings = {
-  enabled: boolean
-  provider: 'gmail' | 'sendgrid' | 'mailgun' | 'custom'
-  gmailSettings?: {
-    user: string
-    appPassword: string
-    fromName?: string
-  }
-  sendgridSettings?: {
-    apiKey: string
-    fromEmail: string
-    fromName?: string
-  }
-  mailgunSettings?: {
-    apiKey: string
-    domain: string
-    fromEmail: string
-    fromName?: string
-  }
-  customSettings?: {
-    host: string
-    port: number
-    secure: boolean
-    user: string
-    password: string
-    fromEmail: string
-    fromName?: string
-  }
-}
-
 /**
- * Получает настройки email из БД или fallback на .env
+ * Отправляет уведомление администратору о новой форме (с HTML)
  */
-async function getEmailSettings(): Promise<EmailSettings | null> {
-  try {
-    const { getPayload } = await import('payload')
-    const config = await import('@payload-config')
-    
-    const payload = await getPayload({ config: config.default })
-    const settings = await payload.findGlobal({
-      slug: 'email-settings',
-    })
-
-    if (settings && settings.enabled) {
-      return settings as EmailSettings
-    }
-  } catch (error) {
-    console.log('Using fallback .env email settings')
-  }
-
-  // Fallback на .env
-  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-    return {
-      enabled: true,
-      provider: 'custom',
-      customSettings: {
-        host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT || '587'),
-        secure: process.env.SMTP_SECURE === 'true',
-        user: process.env.SMTP_USER,
-        password: process.env.SMTP_PASS,
-        fromEmail: process.env.SMTP_FROM || process.env.SMTP_USER,
-        fromName: 'PhE Team',
-      },
-    }
-  }
-
-  return null
-}
-
-/**
- * Создает transporter на основе настроек
- */
-function createTransporter(settings: EmailSettings): Transporter | null {
-  try {
-    switch (settings.provider) {
-      case 'gmail':
-        if (!settings.gmailSettings) return null
-        return nodemailer.createTransport({
-          host: 'smtp.gmail.com',
-          port: 587,
-          secure: false,
-          auth: {
-            user: settings.gmailSettings.user,
-            pass: settings.gmailSettings.appPassword,
-          },
-        })
-
-      case 'sendgrid':
-        if (!settings.sendgridSettings) return null
-        return nodemailer.createTransport({
-          host: 'smtp.sendgrid.net',
-          port: 587,
-          secure: false,
-          auth: {
-            user: 'apikey',
-            pass: settings.sendgridSettings.apiKey,
-          },
-        })
-
-      case 'mailgun':
-        if (!settings.mailgunSettings) return null
-        return nodemailer.createTransport({
-          host: 'smtp.mailgun.org',
-          port: 587,
-          secure: false,
-          auth: {
-            user: `postmaster@${settings.mailgunSettings.domain}`,
-            pass: settings.mailgunSettings.apiKey,
-          },
-        })
-
-      case 'custom':
-        if (!settings.customSettings) return null
-        return nodemailer.createTransport({
-          host: settings.customSettings.host,
-          port: settings.customSettings.port,
-          secure: settings.customSettings.secure,
-          auth: {
-            user: settings.customSettings.user,
-            pass: settings.customSettings.password,
-          },
-        })
-
-      default:
-        return null
-    }
-  } catch (error) {
-    console.error('Failed to create email transporter:', error)
-    return null
-  }
-}
-
-/**
- * Получает From адрес из настроек
- */
-function getFromAddress(settings: EmailSettings): string {
-  let email = ''
-  let name = 'PhE Team'
-
-  switch (settings.provider) {
-    case 'gmail':
-      email = settings.gmailSettings?.user || ''
-      name = settings.gmailSettings?.fromName || name
-      break
-    case 'sendgrid':
-      email = settings.sendgridSettings?.fromEmail || ''
-      name = settings.sendgridSettings?.fromName || name
-      break
-    case 'mailgun':
-      email = settings.mailgunSettings?.fromEmail || ''
-      name = settings.mailgunSettings?.fromName || name
-      break
-    case 'custom':
-      email = settings.customSettings?.fromEmail || ''
-      name = settings.customSettings?.fromName || name
-      break
-  }
-
-  return name ? `${name} <${email}>` : email
-}
-
-/**
- * Заменяет переменные в шаблоне
- */
-function replaceVariables(template: string, variables: Record<string, any>): string {
-  let result = template
-
-  Object.entries(variables).forEach(([key, value]) => {
-    const regex = new RegExp(`{{${key}}}`, 'g')
-    result = result.replace(regex, String(value || ''))
-  })
-
-  return result
-}
-
-type EmailOptions = {
-  to: string
-  subject: string
-  text?: string
-  html?: string
-}
-
-/**
- * Отправляет email
- */
-export async function sendEmail(options: EmailOptions): Promise<boolean> {
-  try {
-    const settings = await getEmailSettings()
-
-    if (!settings || !settings.enabled) {
-      console.error('Email sending is disabled or not configured')
+export async function sendAdminNotification(
+    formType: 'contact' | 'join',
+    formData: Record<string, any>
+  ): Promise<boolean> {
+    const adminEmail = process.env.ADMIN_EMAIL
+  
+    if (!adminEmail) {
+      console.warn('⚠️ ADMIN_EMAIL not configured, skipping notification')
       return false
     }
-
-    const transporter = createTransporter(settings)
-    if (!transporter) {
-      console.error('Failed to create email transporter')
+  
+    const isContact = formType === 'contact'
+    const subject = isContact 
+      ? `📧 New Contact Form: ${formData.name}` 
+      : `🎓 New Application: ${formData.name}`
+  
+    const adminUrl = `${process.env.NEXT_PUBLIC_SERVER_URL}/admin/collections/${
+      isContact ? 'contact-submissions' : 'join-submissions'
+    }`
+  
+    // Формируем список полей
+    const fields = Object.entries(formData)
+      .filter(([key]) => key !== 'subject' && key !== 'type')
+      .map(([key, value]) => `
+        <tr>
+          <td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600; color: #374151; text-transform: capitalize;">
+            ${key.replace(/([A-Z])/g, ' $1').trim()}:
+          </td>
+          <td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #1f2937;">
+            ${value || 'N/A'}
+          </td>
+        </tr>
+      `).join('')
+  
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
+          <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+            <!-- Header -->
+            <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: white; padding: 30px 20px; border-radius: 8px 8px 0 0;">
+              <h1 style="margin: 0; font-size: 24px;">
+                ${isContact ? '📧 New Contact Form' : '🎓 New Join Application'}
+              </h1>
+              <p style="margin: 8px 0 0; opacity: 0.9; font-size: 14px;">
+                Photonics Society Eindhoven
+              </p>
+            </div>
+  
+            <!-- Content -->
+            <div style="background: white; padding: 30px 20px; border-radius: 0 0 8px 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+              <table style="width: 100%; border-collapse: collapse;">
+                ${fields}
+              </table>
+  
+              <!-- Action Button -->
+              <div style="margin-top: 30px; text-align: center;">
+                <a href="${adminUrl}" 
+                   style="display: inline-block; background-color: #22d3ee; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600;">
+                  View in Admin Panel
+                </a>
+              </div>
+  
+              <!-- Footer -->
+              <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 12px;">
+                <p style="margin: 0;">
+                  This notification was sent automatically from your PhE website.
+                </p>
+                <p style="margin: 8px 0 0;">
+                  Received at ${new Date().toLocaleString('en-GB', { 
+                    timeZone: 'Europe/Amsterdam',
+                    dateStyle: 'medium',
+                    timeStyle: 'short'
+                  })}
+                </p>
+              </div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `
+  
+    const text = `You have received a new ${isContact ? 'contact form' : 'join application'}:
+  
+  ${Object.entries(formData)
+    .filter(([key]) => key !== 'subject' && key !== 'type')
+    .map(([key, value]) => `${key}: ${value}`)
+    .join('\n')}
+  
+  ---
+  View in admin: ${adminUrl}
+  Sent from PhE Website at ${new Date().toISOString()}`
+  
+    try {
+      await sendEmail({
+        to: adminEmail,
+        subject,
+        text,
+        html,
+      })
+      
+      console.log('✅ Admin notification sent to:', adminEmail)
+      return true
+    } catch (error) {
+      console.error('❌ Failed to send admin notification:', error)
       return false
     }
-
-    const from = getFromAddress(settings)
-
-    const info = await transporter.sendMail({
-      from,
-      to: options.to,
-      subject: options.subject,
-      text: options.text,
-      html: options.html || options.text?.replace(/\n/g, '<br>'),
-    })
-
-    console.log('✅ Email sent:', info.messageId)
-    return true
-  } catch (error) {
-    console.error('❌ Email sending failed:', error)
-    return false
   }
-}
-
-/**
- * Отправляет email с заменой переменных
- */
-export async function sendTemplateEmail(
-  to: string,
-  subject: string,
-  bodyTemplate: string,
-  variables: Record<string, any>
-): Promise<boolean> {
-  const body = replaceVariables(bodyTemplate, variables)
-  const subjectFilled = replaceVariables(subject, variables)
-
-  return sendEmail({
-    to,
-    subject: subjectFilled,
-    text: body,
-  })
-}
-
-/**
- * Отправляет тестовый email
- */
-export async function sendTestEmail(
-  to: string,
-  settings?: EmailSettings
-): Promise<boolean> {
-  const actualSettings = settings || (await getEmailSettings())
-
-  if (!actualSettings) {
-    throw new Error('Email settings not configured')
-  }
-
-  const transporter = createTransporter(actualSettings)
-  if (!transporter) {
-    throw new Error('Failed to create email transporter')
-  }
-
-  const from = getFromAddress(actualSettings)
-
-  const info = await transporter.sendMail({
-    from,
-    to,
-    subject: '🧪 Test Email from PhE Website',
-    text: `This is a test email from Photonics Society Eindhoven website.
-
-If you received this email, your email configuration is working correctly!
-
-Provider: ${actualSettings.provider}
-Sent at: ${new Date().toISOString()}
-
-Best regards,
-PhE Team`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #22d3ee;">🧪 Test Email</h2>
-        <p>This is a test email from <strong>Photonics Society Eindhoven</strong> website.</p>
-        <p>If you received this email, your email configuration is working correctly! ✅</p>
-        <hr style="border: 1px solid #e5e7eb; margin: 20px 0;">
-        <p style="color: #6b7280; font-size: 14px;">
-          <strong>Provider:</strong> ${actualSettings.provider}<br>
-          <strong>Sent at:</strong> ${new Date().toISOString()}
-        </p>
-        <p>Best regards,<br><strong>PhE Team</strong></p>
-      </div>
-    `,
-  })
-
-  console.log('✅ Test email sent:', info.messageId)
-  return true
-}
-
-/**
- * Отправляет acceptance email
- */
-export async function sendAcceptanceEmail(
-  to: string,
-  name: string,
-  customTemplate?: { subject: string; body: string }
-): Promise<boolean> {
-  const defaultSubject = '🎉 Welcome to Photonics Society Eindhoven!'
-  const defaultBody = `Dear {{name}},
-
-Congratulations! We are pleased to inform you that your application to join Photonics Society Eindhoven has been accepted.
-
-Next steps:
-1. Join our LinkedIn group
-2. Check out upcoming events at https://phe.tue.nl/events
-3. Get your free OPTICA subscription
-
-Welcome to the team!
-
-Best regards,
-PhE Team`
-
-  const subject = customTemplate?.subject || defaultSubject
-  const body = customTemplate?.body || defaultBody
-
-  return sendTemplateEmail(to, subject, body, { name })
-}
-
-/**
- * Отправляет rejection email
- */
-export async function sendRejectionEmail(
-  to: string,
-  name: string,
-  customTemplate?: { subject: string; body: string }
-): Promise<boolean> {
-  const defaultSubject = 'Regarding your PhE application'
-  const defaultBody = `Dear {{name}},
-
-Thank you for your interest in Photonics Society Eindhoven.
-
-After careful consideration, we regret to inform you that we are unable to accept your application at this time.
-
-We appreciate your interest and wish you all the best in your future endeavors.
-
-Best regards,
-PhE Team`
-
-  const subject = customTemplate?.subject || defaultSubject
-  const body = customTemplate?.body || defaultBody
-
-  return sendTemplateEmail(to, subject, body, { name })
-}
-
-/**
- * Отправляет reply email
- */
-export async function sendReplyEmail(
-  to: string,
-  name: string,
-  subject: string,
-  body: string
-): Promise<boolean> {
-  return sendTemplateEmail(to, subject, body, { name })
-}

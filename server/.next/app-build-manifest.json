@@ -34,21 +34,6 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/(frontend)/page.js"
-    ],
-    "/(frontend)/contact/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(frontend)/contact/page.js"
-    ],
-    "/(frontend)/join/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(frontend)/join/page.js"
-    ],
-    "/api/forms/submit/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/forms/submit/route.js"
     ]
   }
 }

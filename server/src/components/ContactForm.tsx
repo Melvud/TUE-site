@@ -8,10 +8,14 @@ export default function ContactForm() {
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    
+    // ✅ Сохраняем ссылку на форму ДО асинхронной операции
+    const form = e.currentTarget
+    
     setBusy(true)
     setSent(null)
 
-    const formData = Object.fromEntries(new FormData(e.currentTarget).entries())
+    const formData = Object.fromEntries(new FormData(form).entries())
     
     try {
       const res = await fetch('/api/forms/submit', {
@@ -27,7 +31,7 @@ export default function ContactForm() {
       if (!res.ok) throw new Error('Failed to send')
       
       setSent('ok')
-      e.currentTarget.reset()
+      form.reset() // ✅ Используем сохраненную ссылку
     } catch (err: any) {
       setSent(err?.message ?? 'Failed to send')
     } finally {

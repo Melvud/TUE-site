@@ -13,7 +13,7 @@ export const ContactSubmissions: CollectionConfig = {
   },
   access: {
     read: ({ req: { user } }) => !!user,
-    create: () => true, // Публичное создание через форму
+    create: () => true,
     update: ({ req: { user } }) => !!user,
     delete: ({ req: { user } }) => !!user,
   },
@@ -77,6 +77,15 @@ export const ContactSubmissions: CollectionConfig = {
       },
     },
     {
+      name: 'useCustomTemplate',
+      label: 'Customize Reply',
+      type: 'checkbox',
+      defaultValue: false,
+      admin: {
+        description: 'Override default template from Email Templates',
+      },
+    },
+    {
       name: 'replyTemplate',
       label: 'Reply Email',
       type: 'group',
@@ -88,15 +97,26 @@ export const ContactSubmissions: CollectionConfig = {
           name: 'subject',
           label: 'Subject',
           type: 'text',
-          defaultValue: 'Re: Your contact form submission',
+          admin: {
+            placeholder: 'Uses default from Email Templates if empty',
+          },
         },
         {
           name: 'body',
           label: 'Email Body',
           type: 'textarea',
           admin: {
-            rows: 8,
-            placeholder: 'Dear {{name}},\n\nThank you for contacting us...',
+            rows: 10,
+            placeholder: 'Uses default from Email Templates if empty. Available: {{name}}, {{email}}, {{message}}',
+          },
+        },
+        {
+          name: 'sent',
+          label: 'Email Sent',
+          type: 'checkbox',
+          defaultValue: false,
+          admin: {
+            readOnly: true,
           },
         },
       ],
@@ -105,41 +125,37 @@ export const ContactSubmissions: CollectionConfig = {
   hooks: {
     afterChange: [
       async ({ doc, previousDoc, req, operation }) => {
-        // Отправка reply email при заполнении и сохранении
-        if (
-          operation === 'update' &&
-          doc.replyTemplate?.body &&
-          doc.replyTemplate?.subject
-        ) {
-          // Проверяем, изменился ли шаблон (чтобы не отправлять повторно)
-          const templateChanged = 
-            previousDoc?.replyTemplate?.body !== doc.replyTemplate?.body ||
-            previousDoc?.replyTemplate?.subject !== doc.replyTemplate?.subject
+        if (operation === 'update') {
+          const replyChanged = 
+            (doc.replyTemplate?.subject && doc.replyTemplate?.subject !== previousDoc?.replyTemplate?.subject) ||
+            (doc.replyTemplate?.body && doc.replyTemplate?.body !== previousDoc?.replyTemplate?.body)
 
-          if (templateChanged) {
+          if (replyChanged && !doc.replyTemplate?.sent) {
             try {
-              const { sendTemplateEmail } = await import('@/lib/email')
+              const { sendReplyEmail } = await import('@/lib/email')
               
-              const success = await sendTemplateEmail(
+              const success = await sendReplyEmail(
                 doc.email,
-                doc.replyTemplate.subject,
-                doc.replyTemplate.body,
-                { name: doc.name, email: doc.email }
+                doc.name,
+                doc.replyTemplate?.subject,
+                doc.replyTemplate?.body,
+                doc.message
               )
               
               if (success) {
                 console.log('✅ Reply email sent to:', doc.email)
                 
-                // Обновляем статус на "Replied"
-                if (doc.status !== 'replied') {
-                  await req.payload.update({
-                    collection: 'contact-submissions',
-                    id: doc.id,
-                    data: {
-                      status: 'replied',
+                await req.payload.update({
+                  collection: 'contact-submissions',
+                  id: doc.id,
+                  data: {
+                    status: 'replied',
+                    replyTemplate: {
+                      ...doc.replyTemplate,
+                      sent: true,
                     },
-                  })
-                }
+                  },
+                })
               }
             } catch (error) {
               console.error('❌ Failed to send reply email:', error)

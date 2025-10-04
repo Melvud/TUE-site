@@ -102,6 +102,7 @@ export interface Config {
     join: Join;
     contact: Contact;
     'email-settings': EmailSetting;
+    'email-templates': EmailTemplate;
   };
   globalsSelect: {
     home: HomeSelect<false> | HomeSelect<true>;
@@ -109,6 +110,7 @@ export interface Config {
     join: JoinSelect<false> | JoinSelect<true>;
     contact: ContactSelect<false> | ContactSelect<true>;
     'email-settings': EmailSettingsSelect<false> | EmailSettingsSelect<true>;
+    'email-templates': EmailTemplatesSelect<false> | EmailTemplatesSelect<true>;
   };
   locale: null;
   user: User & {
@@ -208,6 +210,9 @@ export interface Event {
     };
     [k: string]: unknown;
   } | null;
+  /**
+   * ⭐ Featured event on Events page (only one can be Latest)
+   */
   latest?: boolean | null;
   published?: boolean | null;
   publishAt?: string | null;
@@ -306,11 +311,16 @@ export interface ContactSubmission {
    */
   adminNotes?: string | null;
   /**
+   * Override default template from Email Templates
+   */
+  useCustomTemplate?: boolean | null;
+  /**
    * Compose and send reply email
    */
   replyTemplate?: {
     subject?: string | null;
     body?: string | null;
+    sent?: boolean | null;
   };
   updatedAt: string;
   createdAt: string;
@@ -341,19 +351,29 @@ export interface JoinSubmission {
    */
   reviewNotes?: string | null;
   /**
-   * Email to send when accepting the application
+   * Override default templates from Email Templates settings
+   */
+  useCustomTemplate?: boolean | null;
+  /**
+   * Email sent when accepting the application
    */
   acceptanceEmail?: {
     subject?: string | null;
+    /**
+     * Available: {{name}}, {{email}}
+     */
     body?: string | null;
     sent?: boolean | null;
     sentAt?: string | null;
   };
   /**
-   * Email to send when rejecting the application
+   * Email sent when rejecting the application
    */
   rejectionEmail?: {
     subject?: string | null;
+    /**
+     * Available: {{name}}, {{email}}
+     */
     body?: string | null;
     sent?: boolean | null;
   };
@@ -553,11 +573,13 @@ export interface ContactSubmissionsSelect<T extends boolean = true> {
   formData?: T;
   status?: T;
   adminNotes?: T;
+  useCustomTemplate?: T;
   replyTemplate?:
     | T
     | {
         subject?: T;
         body?: T;
+        sent?: T;
       };
   updatedAt?: T;
   createdAt?: T;
@@ -572,6 +594,7 @@ export interface JoinSubmissionsSelect<T extends boolean = true> {
   formData?: T;
   status?: T;
   reviewNotes?: T;
+  useCustomTemplate?: T;
   acceptanceEmail?:
     | T
     | {
@@ -833,6 +856,39 @@ export interface EmailSetting {
   createdAt?: string | null;
 }
 /**
+ * Customize email templates for automated responses
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "email-templates".
+ */
+export interface EmailTemplate {
+  id: number;
+  acceptanceSubject: string;
+  /**
+   * Available variables: {{name}}, {{email}}
+   */
+  acceptanceBody: string;
+  rejectionSubject: string;
+  /**
+   * Available variables: {{name}}, {{email}}
+   */
+  rejectionBody: string;
+  /**
+   * Can be overridden per-response in Contact Submissions
+   */
+  contactReplySubject: string;
+  /**
+   * Available variables: {{name}}, {{email}}, {{message}}
+   */
+  contactReplyBody: string;
+  /**
+   * Email template best practices
+   */
+  tips?: string | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "home_select".
  */
@@ -977,6 +1033,22 @@ export interface EmailSettingsSelect<T extends boolean = true> {
         fromName?: T;
       };
   testEmail?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "email-templates_select".
+ */
+export interface EmailTemplatesSelect<T extends boolean = true> {
+  acceptanceSubject?: T;
+  acceptanceBody?: T;
+  rejectionSubject?: T;
+  rejectionBody?: T;
+  contactReplySubject?: T;
+  contactReplyBody?: T;
+  tips?: T;
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;

@@ -25,6 +25,15 @@ export async function POST(request: Request) {
 
       console.log('Contact submission saved:', submission.id)
 
+      // 📧 Отправляем уведомление администратору
+      try {
+        const { sendAdminNotification } = await import('@/lib/email')
+        await sendAdminNotification('contact', formData)
+      } catch (emailError) {
+        console.error('Failed to send admin notification:', emailError)
+        // Не прерываем выполнение, форма всё равно сохранена
+      }
+
       return NextResponse.json({ 
         success: true, 
         id: submission.id,
@@ -45,6 +54,15 @@ export async function POST(request: Request) {
       })
 
       console.log('Join submission saved:', submission.id)
+
+      // 📧 Отправляем уведомление администратору
+      try {
+        const { sendAdminNotification } = await import('@/lib/email')
+        await sendAdminNotification('join', formData)
+      } catch (emailError) {
+        console.error('Failed to send admin notification:', emailError)
+        // Не прерываем выполнение, форма всё равно сохранена
+      }
 
       return NextResponse.json({ 
         success: true, 

@@ -65,7 +65,7 @@ export default async function EventsPage() {
 
   const raw = (res?.docs ?? []) as any[]
 
-  // Разделяем на upcoming и past используя европейскую timezone
+  // Разделяем на upcoming и past
   const upcoming: any[] = []
   const past: any[] = []
 
@@ -77,20 +77,29 @@ export default async function EventsPage() {
     }
   }
 
-  // Featured: помеченный как latest или ближайший upcoming
+  // Featured: ТОЛЬКО событие с флагом latest
   let featured: any | undefined
-  const marked = upcoming.find((doc) => doc?.latest)
-  if (marked) {
-    featured = marked
-  } else if (upcoming.length) {
-    // Сортируем upcoming по дате (ближайшие первыми)
-    featured = [...upcoming].sort(
-      (a, b) => getDateSortKey(a.date) - getDateSortKey(b.date)
-    )[0]
+
+  // Ищем все события с latest: true
+  const latestEvents = raw.filter((doc) => doc?.latest === true)
+
+  if (latestEvents.length > 0) {
+    // Если несколько latest (не должно быть, но на всякий случай)
+    // берем последнее обновленное
+    featured = latestEvents.sort((a, b) => {
+      const dateA = new Date(a.updatedAt || a.createdAt).getTime()
+      const dateB = new Date(b.updatedAt || b.createdAt).getTime()
+      return dateB - dateA // новые первыми
+    })[0]
   }
 
+  // Если featured - это latest событие, убираем его из upcoming списка
+  const upcomingFiltered = featured 
+    ? upcoming.filter(doc => doc.id !== featured.id)
+    : upcoming
+
   // Сортируем upcoming по дате (ближайшие первыми)
-  const upcomingSorted = [...upcoming].sort(
+  const upcomingSorted = [...upcomingFiltered].sort(
     (a, b) => getDateSortKey(a.date) - getDateSortKey(b.date)
   )
 
@@ -127,17 +136,23 @@ export default async function EventsPage() {
         Events
       </h1>
 
-      {/* Featured */}
+      {/* Featured - только Latest событие */}
       {featured && (
-        <EventHero event={featured} className="mb-12" showBottomRegister={false} />
+        <div className="mb-12">
+          <EventHero event={featured} showBottomRegister={false} />
+        </div>
       )}
 
       {/* Upcoming - по месяцам */}
       <section className="mb-16">
         <h2 className="text-center text-2xl font-bold mb-6">Upcoming Events</h2>
 
-        {Object.keys(grouped).length === 0 && !featured ? (
-          <p className="text-center text-slate-400">No upcoming events.</p>
+        {Object.keys(grouped).length === 0 ? (
+          <p className="text-center text-slate-400">
+            {featured 
+              ? 'No other upcoming events. Check out the featured event above!' 
+              : 'No upcoming events at the moment.'}
+          </p>
         ) : (
           Object.keys(grouped)
             .sort((a, b) => {
