@@ -9,9 +9,9 @@ export const dynamic = 'force-dynamic'
 export default async function EventDetailPage({
   params,
 }: {
-  params: Promise<{ slug: string }>
+  params: { slug: string }
 }) {
-  const { slug } = await params
+  const { slug } = params
   const { isEnabled } = await draftMode()
   const payload = await getPayload({ config })
 
@@ -22,10 +22,13 @@ export default async function EventDetailPage({
     draft: isEnabled,
   })
 
-  const event = events.docs[0]
-  if (!event) return notFound()
+  const event: any = events.docs[0]
+  if (!event) {
+    notFound()
+  }
 
-  const coverUrl = typeof event.cover === 'object' && event.cover?.url ? event.cover.url : ''
+  const coverUrl =
+    typeof event.cover === 'object' && event.cover?.url ? event.cover.url : ''
   const contentHtml = serializeLexical(event.content)
 
   return (
@@ -34,11 +37,13 @@ export default async function EventDetailPage({
         <h1 className="font-extrabold leading-[1.08] tracking-tight text-4xl sm:text-5xl md:text-6xl lg:text-7xl">
           {event.title}
         </h1>
-        {event.date && <p className="mt-4 text-base sm:text-lg text-slate-400">{event.date}</p>}
-        
+        {event.date && (
+          <p className="mt-4 text-base sm:text-lg text-slate-400">{event.date}</p>
+        )}
+
         {event.googleFormUrl && (
           <div className="mt-6">
-            
+            <a
               href={event.googleFormUrl}
               target="_blank"
               rel="noopener noreferrer"
@@ -52,7 +57,12 @@ export default async function EventDetailPage({
 
       {coverUrl && (
         <div className="max-w-6xl mx-auto px-4">
-          <img src={coverUrl} alt={event.title} className="w-full h-auto rounded-2xl border border-slate-700" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={coverUrl}
+            alt={event.title}
+            className="w-full h-auto rounded-2xl border border-slate-700"
+          />
         </div>
       )}
 
@@ -66,7 +76,7 @@ export default async function EventDetailPage({
 
         {event.googleFormUrl && (
           <div className="mt-12 mb-16 text-center">
-            
+            <a
               href={event.googleFormUrl}
               target="_blank"
               rel="noopener noreferrer"
