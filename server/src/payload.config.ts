@@ -12,9 +12,14 @@ import { Events } from './collections/Events'
 import { News } from './collections/News'
 import { Members } from './collections/Members'
 import { MembersPast } from './collections/MembersPast'
+import { ContactSubmissions } from './collections/ContactSubmissions'
+import { JoinSubmissions } from './collections/JoinSubmissions'
+
 import { Home } from './globals/Home'
 import { About } from './globals/About'
 import { JoinUs } from './globals/JoinUs'
+import { Contact } from './globals/Contact'
+import { EmailSettings } from './globals/EmailSettings'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -26,7 +31,6 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
     livePreview: {
-      // Payload 3.x: { data, collectionConfig?, globalConfig? }
       url: ({ data, collectionConfig, globalConfig }) => {
         const baseUrl =
           process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
@@ -34,7 +38,6 @@ export default buildConfig({
         const slug: string | undefined =
           (data as any)?.slug || (data as any)?.id
 
-        // Коллекции
         if (collectionConfig) {
           switch (collectionConfig.slug) {
             case 'events':
@@ -52,15 +55,16 @@ export default buildConfig({
           }
         }
 
-        // Глобалы (используйте только реальные slugs из вашего проекта)
         if (globalConfig) {
           switch (globalConfig.slug) {
             case 'home':
               return `${baseUrl}?preview=true`
             case 'about':
               return `${baseUrl}/about?preview=true`
-            case 'join': // соответствует ./globals/JoinUs
+            case 'join':
               return `${baseUrl}/join?preview=true`
+            case 'contact':
+              return `${baseUrl}/contact?preview=true`
             default:
               return `${baseUrl}?preview=true`
           }
@@ -75,8 +79,17 @@ export default buildConfig({
       ],
     },
   },
-  collections: [Users, Media, Events, News, Members, MembersPast],
-  globals: [Home, About, JoinUs],
+  collections: [
+    Users,
+    Media,
+    Events,
+    News,
+    Members,
+    MembersPast,
+    ContactSubmissions,
+    JoinSubmissions,
+  ],
+  globals: [Home, About, JoinUs, Contact, EmailSettings],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {

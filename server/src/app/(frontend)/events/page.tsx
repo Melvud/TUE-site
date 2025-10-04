@@ -3,62 +3,21 @@ import config from '@payload-config'
 import { draftMode } from 'next/headers'
 import Link from 'next/link'
 import EventHero from '@/components/EventHero'
+import { 
+  formatEuropeanDate, 
+  isPastDate, 
+  getDateSortKey 
+} from '@/lib/dateUtils'
 
 export const dynamic = 'force-dynamic'
 
-/** Robust local date parser:
- *  - YYYY-MM-DD
- *  - YYYY-MM-DD HH:mm[:ss]
- *  - DD.MM.YYYY
- *  - MM/DD/YYYY
- *  - fallback to native Date
- */
-function parseDateSafe(input?: string): Date | null {
-  if (!input) return null
-  const s = String(input).trim()
-
-  const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(s)
-  if (iso) {
-    const [, y, m, d, hh = '0', mm = '0', ss = '0'] = iso
-    const dt = new Date(Number(y), Number(m) - 1, Number(d), Number(hh), Number(mm), Number(ss))
-    return isNaN(+dt) ? null : dt
-  }
-
-  const eu = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(s)
-  if (eu) {
-    const [, d, m, y] = eu
-    const dt = new Date(Number(y), Number(m) - 1, Number(d))
-    return isNaN(+dt) ? null : dt
-  }
-
-  const us = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s)
-  if (us) {
-    const [, m, d, y] = us
-    const dt = new Date(Number(y), Number(m) - 1, Number(d))
-    return isNaN(+dt) ? null : dt
-  }
-
-  const d = new Date(s)
-  return isNaN(+d) ? null : d
-}
-
-/** Normalize to local midnight for stable "past vs upcoming" split */
-function ymd(d: Date) {
-  const local = new Date(d.getFullYear(), d.getMonth(), d.getDate())
-  return local.getTime()
-}
-
-function formatHuman(d: Date, locale = 'en-US') {
-  try {
-    return d.toLocaleDateString(locale, { year: 'numeric', month: 'long', day: '2-digit' })
-  } catch {
-    return d.toISOString().slice(0, 10)
-  }
-}
-
-/** Small card used in the monthly "Upcoming" calendar */
 function SmallEventCard({ ev }: { ev: any }) {
-  const dt = parseDateSafe(ev?.date)
+  const formattedDate = formatEuropeanDate(ev?.date, 'en-GB', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+
   const img =
     (typeof ev?.cover === 'object' && ev?.cover?.url ? ev.cover.url : '') ||
     ev?.coverUrl ||
@@ -81,7 +40,9 @@ function SmallEventCard({ ev }: { ev: any }) {
         />
       ) : null}
       <div className="p-4">
-        {dt && <div className="text-sm text-cyan-400 mb-1">{formatHuman(dt, 'en-US')}</div>}
+        {formattedDate && (
+          <div className="text-sm text-cyan-400 mb-1">{formattedDate}</div>
+        )}
         <h4 className="text-lg font-semibold text-white">{ev?.title}</h4>
       </div>
     </Link>
@@ -94,7 +55,6 @@ export default async function EventsPage() {
   const { isEnabled } = await draftMode()
   const payload = await getPayload({ config })
 
-  // Load with depth:1 so cover comes as object with url (needed for cards & hero)
   const res = await payload.find({
     collection: 'events',
     limit: 500,
@@ -105,43 +65,61 @@ export default async function EventsPage() {
 
   const raw = (res?.docs ?? []) as any[]
 
-  // Split by date
-  const todayKey = ymd(new Date())
-  const upcoming: Array<{ doc: any; dt: Date }> = []
-  const past: Array<{ doc: any; dt: Date }> = []
+  // Разделяем на upcoming и past используя европейскую timezone
+  const upcoming: any[] = []
+  const past: any[] = []
 
   for (const doc of raw) {
-    const dt = parseDateSafe(doc?.date)
-    if (!dt) continue
-    if (ymd(dt) >= todayKey) upcoming.push({ doc, dt })
-    else past.push({ doc, dt })
+    if (isPastDate(doc?.date)) {
+      past.push(doc)
+    } else {
+      upcoming.push(doc)
+    }
   }
 
-  // Featured (big hero): marked 'latest' or closest upcoming
+  // Featured: помеченный как latest или ближайший upcoming
   let featured: any | undefined
-  const marked = upcoming.find(({ doc }) => doc?.latest)
+  const marked = upcoming.find((doc) => doc?.latest)
   if (marked) {
-    featured = marked.doc
+    featured = marked
   } else if (upcoming.length) {
-    featured = [...upcoming].sort((a, b) => +a.dt - +b.dt)[0].doc
+    // Сортируем upcoming по дате (ближайшие первыми)
+    featured = [...upcoming].sort(
+      (a, b) => getDateSortKey(a.date) - getDateSortKey(b.date)
+    )[0]
   }
 
-  // Sort upcoming by date asc (we will still include featured in month groups)
-  const upcomingSorted = [...upcoming].sort((a, b) => +a.dt - +b.dt)
+  // Сортируем upcoming по дате (ближайшие первыми)
+  const upcomingSorted = [...upcoming].sort(
+    (a, b) => getDateSortKey(a.date) - getDateSortKey(b.date)
+  )
 
-  // Group by month/year — ONLY months that have events
+  // Группируем по месяцам
   const grouped: Grouped = {}
-  for (const { doc, dt } of upcomingSorted) {
-    const year = dt.getFullYear()
-    const month = dt.getMonth()
+  for (const doc of upcomingSorted) {
+    if (!doc?.date) continue
+
+    const date = new Date(doc.date)
+    if (isNaN(date.getTime())) continue
+
+    const year = date.getUTCFullYear()
+    const month = date.getUTCMonth()
     const key = `${year}-${String(month + 1).padStart(2, '0')}`
-    const label = dt.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-    if (!grouped[key]) grouped[key] = { label, year, month, items: [] }
+    
+    const label = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Amsterdam',
+      month: 'long',
+      year: 'numeric',
+    }).format(date)
+
+    if (!grouped[key]) {
+      grouped[key] = { label, year, month, items: [] }
+    }
     grouped[key].items.push(doc)
   }
 
-  // Past events — newest first
-  past.sort((a, b) => +b.dt - +a.dt)
+  // Past events - сортируем от новых к старым
+  past.sort((a, b) => getDateSortKey(b.date) - getDateSortKey(a.date))
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
@@ -149,12 +127,12 @@ export default async function EventsPage() {
         Events
       </h1>
 
-      {/* Featured (big) */}
+      {/* Featured */}
       {featured && (
         <EventHero event={featured} className="mb-12" showBottomRegister={false} />
       )}
 
-      {/* Upcoming — calendar by months (cards). Only months that actually have events. */}
+      {/* Upcoming - по месяцам */}
       <section className="mb-16">
         <h2 className="text-center text-2xl font-bold mb-6">Upcoming Events</h2>
 
@@ -186,28 +164,36 @@ export default async function EventsPage() {
         )}
       </section>
 
-      {/* Past — plain rows (date + title), no images */}
+      {/* Past events */}
       <section className="mb-4">
         <h2 className="text-center text-2xl font-bold mb-6">Past Events</h2>
         {past.length === 0 ? (
           <p className="text-center text-slate-400">No past events.</p>
         ) : (
           <ul className="space-y-3">
-            {past.map(({ doc, dt }) => (
-              <li key={doc?.slug || String(doc?.id)} className="text-center">
-                <Link
-                  href={`/events/${doc?.slug || doc?.id}`}
-                  className="group inline-flex items-baseline gap-3 hover:text-cyan-300 transition-colors"
-                >
-                  <span className="text-sm text-slate-500">
-                    {dt ? formatHuman(dt, 'en-US') : ''}
-                  </span>
-                  <span className="text-base font-medium group-hover:underline">
-                    {doc?.title}
-                  </span>
-                </Link>
-              </li>
-            ))}
+            {past.map((doc) => {
+              const formattedDate = formatEuropeanDate(doc?.date, 'en-GB', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              })
+
+              return (
+                <li key={doc?.slug || String(doc?.id)} className="text-center">
+                  <Link
+                    href={`/events/${doc?.slug || doc?.id}`}
+                    className="group inline-flex items-baseline gap-3 hover:text-cyan-300 transition-colors"
+                  >
+                    <span className="text-sm text-slate-500">
+                      {formattedDate}
+                    </span>
+                    <span className="text-base font-medium group-hover:underline">
+                      {doc?.title}
+                    </span>
+                  </Link>
+                </li>
+              )
+            })}
           </ul>
         )}
       </section>

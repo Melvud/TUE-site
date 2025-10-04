@@ -6,7 +6,6 @@ import {
   EXPERIMENTAL_TableFeature,
 } from '@payloadcms/richtext-lexical'
 
-// Простой блок «Code Block» через BlocksFeature (для многострочного кода)
 const CodeBlock: Block = {
   slug: 'codeBlock',
   labels: { singular: 'Code Block', plural: 'Code Blocks' },
@@ -40,18 +39,13 @@ const CodeBlock: Block = {
 export const About: GlobalConfig = {
   slug: 'about',
   access: { read: () => true },
-
-  // ВКЛЮЧАЕМ черновики — без этого «Preview» и живое превью не появятся
   versions: { drafts: true },
 
   admin: {
     description: 'About page content',
-    // Локально для about включаем Live Preview (кнопка «глаз» в админке)
     livePreview: {
-      // идём через /api/preview, чтобы включить draftMode и сделать редирект
       url: () => {
-        const base =
-          process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
+        const base = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
         const redirect = encodeURIComponent('/about')
         return `${base}/api/preview?redirect=${redirect}`
       },
@@ -80,21 +74,32 @@ export const About: GlobalConfig = {
           options: [
             { label: 'Text → Image', value: 'text-image' },
             { label: 'Image → Text', value: 'image-text' },
+            { label: 'Text Only', value: 'text-only' },
+            { label: 'Image Only', value: 'image-only' },
           ],
         },
-        { name: 'title', label: 'Title', type: 'text', required: true },
+        { 
+          name: 'title', 
+          label: 'Title', 
+          type: 'text', 
+          required: false,
+        },
 
         {
           name: 'text',
           label: 'Text',
           type: 'richText',
           required: false,
+          admin: {
+            condition: (data, siblingData) => 
+              siblingData?.layout !== 'image-only',
+          },
           editor: lexicalEditor({
             features: ({ defaultFeatures }) => [
-              ...defaultFeatures,            // базовый набор (заголовки, списки, цитаты, ссылки, inline-code и т.п.)
-              FixedToolbarFeature(),         // фиксированная верхняя панель
-              EXPERIMENTAL_TableFeature(),   // таблицы
-              BlocksFeature({                // блочная вставка кода
+              ...defaultFeatures,
+              FixedToolbarFeature(),
+              EXPERIMENTAL_TableFeature(),
+              BlocksFeature({
                 blocks: [CodeBlock],
               }),
             ],
@@ -107,6 +112,10 @@ export const About: GlobalConfig = {
           type: 'upload',
           relationTo: 'media',
           required: false,
+          admin: {
+            condition: (data, siblingData) => 
+              siblingData?.layout !== 'text-only',
+          },
         },
       ],
     },

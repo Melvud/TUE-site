@@ -1,9 +1,9 @@
-// src/app/(frontend)/events/[slug]/page.tsx
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { draftMode } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { serializeLexical } from '@/lib/serializeLexical'
+import { formatEuropeanDate, isPastDate } from '@/lib/dateUtils'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,17 +32,28 @@ export default async function EventDetailPage({
     typeof event.cover === 'object' && event.cover?.url ? event.cover.url : ''
   const contentHtml = serializeLexical(event.content)
 
+  // Форматируем дату и проверяем, прошло ли событие
+  const formattedDate = formatEuropeanDate(event.date, 'en-GB', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+  const isEventPast = isPastDate(event.date)
+
   return (
     <div className="bg-slate-900 text-slate-100">
       <header className="pt-28 pb-10 text-center">
         <h1 className="font-extrabold leading-[1.08] tracking-tight text-4xl sm:text-5xl md:text-6xl lg:text-7xl">
           {event.title}
         </h1>
-        {event.date && (
-          <p className="mt-4 text-base sm:text-lg text-slate-400">{event.date}</p>
+        {formattedDate && (
+          <p className="mt-4 text-base sm:text-lg text-slate-400">
+            <time dateTime={event.date}>{formattedDate}</time>
+          </p>
         )}
 
-        {event.googleFormUrl && (
+        {/* Показываем кнопку регистрации только если событие НЕ прошло */}
+        {!isEventPast && event.googleFormUrl && (
           <div className="mt-6">
             <a
               href={event.googleFormUrl}
@@ -75,18 +86,7 @@ export default async function EventDetailPage({
           />
         )}
 
-        {event.googleFormUrl && (
-          <div className="mt-12 mb-16 text-center">
-            <a
-              href={event.googleFormUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center rounded-xl bg-cyan-500 px-6 py-3 text-white font-semibold hover:bg-cyan-400 transition"
-            >
-              Register for event
-            </a>
-          </div>
-        )}
+        {/* Убрали нижнюю кнопку регистрации */}
       </main>
     </div>
   )

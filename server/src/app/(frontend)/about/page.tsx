@@ -7,17 +7,15 @@ import Section from '@/components/Section'
 
 export const dynamic = 'force-dynamic'
 
-// Тип глобала "about" — нам важен только массив секций
 type AboutGlobal = {
   sections?: Array<{
     title?: string
-    layout?: 'text-image' | 'image-text' | string
+    layout?: 'text-image' | 'image-text' | 'text-only' | 'image-only' | string
     text?: unknown
     image?: { url?: string } | string | null
   }>
 }
 
-// Явно перечисляем коллекции, которые используем здесь
 type KnownMemberCollections = 'members' | 'pastMembers' | 'membersPast'
 
 export default async function AboutPage() {
@@ -32,14 +30,15 @@ export default async function AboutPage() {
 
   const sections = about?.sections ?? []
 
-  // безопасный finder: тип collection — только из известного юниона
   const safeFind = async (collection: KnownMemberCollections) => {
     try {
       const res = await payload.find({
-        collection, // <- теперь это не произвольная строка
+        collection,
         draft: isEnabled,
         limit: 100,
         depth: 2,
+        // ВАЖНО: Сортировка по полю order
+        sort: 'order',
       } as any)
       return res?.docs ?? []
     } catch {
@@ -47,7 +46,6 @@ export default async function AboutPage() {
     }
   }
 
-  // разные названия: pastMembers / membersPast
   const members = await safeFind('members')
   let pastMembers = await safeFind('pastMembers')
   if (pastMembers.length === 0) pastMembers = await safeFind('membersPast')
@@ -68,6 +66,51 @@ export default async function AboutPage() {
             typeof section?.image === 'object' && section.image?.url
               ? section.image.url
               : undefined
+
+          // Text only
+          if (section?.layout === 'text-only') {
+            return (
+              <section key={i} className="max-w-4xl mx-auto">
+                {section?.title && (
+                  <h2 className="text-2xl font-bold mb-4 text-center">
+                    {section.title}
+                  </h2>
+                )}
+                {html && (
+                  <article
+                    className="prose prose-invert max-w-none"
+                    dangerouslySetInnerHTML={{ __html: html }}
+                  />
+                )}
+              </section>
+            )
+          }
+
+          // Image only
+          if (section?.layout === 'image-only') {
+            return (
+              <section key={i} className="max-w-3xl mx-auto">
+                {section?.title && (
+                  <h2 className="text-2xl font-bold mb-4 text-center">
+                    {section.title}
+                  </h2>
+                )}
+                {imgUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={imgUrl}
+                    alt={section?.title || 'About image'}
+                    className="w-full h-auto rounded-2xl border border-slate-700"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="aspect-[4/3] w-full rounded-2xl bg-slate-800" />
+                )}
+              </section>
+            )
+          }
+
+          // Text-image layout
           const isTextImageLayout = section?.layout === 'text-image'
 
           return (

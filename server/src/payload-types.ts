@@ -73,6 +73,8 @@ export interface Config {
     news: News;
     members: Member;
     membersPast: MembersPast;
+    'contact-submissions': ContactSubmission;
+    'join-submissions': JoinSubmission;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
     'payload-migrations': PayloadMigration;
@@ -85,6 +87,8 @@ export interface Config {
     news: NewsSelect<false> | NewsSelect<true>;
     members: MembersSelect<false> | MembersSelect<true>;
     membersPast: MembersPastSelect<false> | MembersPastSelect<true>;
+    'contact-submissions': ContactSubmissionsSelect<false> | ContactSubmissionsSelect<true>;
+    'join-submissions': JoinSubmissionsSelect<false> | JoinSubmissionsSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
     'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>;
@@ -96,11 +100,15 @@ export interface Config {
     home: Home;
     about: About;
     join: Join;
+    contact: Contact;
+    'email-settings': EmailSetting;
   };
   globalsSelect: {
     home: HomeSelect<false> | HomeSelect<true>;
     about: AboutSelect<false> | AboutSelect<true>;
     join: JoinSelect<false> | JoinSelect<true>;
+    contact: ContactSelect<false> | ContactSelect<true>;
+    'email-settings': EmailSettingsSelect<false> | EmailSettingsSelect<true>;
   };
   locale: null;
   user: User & {
@@ -273,6 +281,87 @@ export interface MembersPast {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "contact-submissions".
+ */
+export interface ContactSubmission {
+  id: number;
+  name: string;
+  email: string;
+  message?: string | null;
+  /**
+   * All form fields submitted
+   */
+  formData?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  status?: ('new' | 'in-progress' | 'replied' | 'closed') | null;
+  /**
+   * Internal notes (not visible to user)
+   */
+  adminNotes?: string | null;
+  /**
+   * Compose and send reply email
+   */
+  replyTemplate?: {
+    subject?: string | null;
+    body?: string | null;
+  };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "join-submissions".
+ */
+export interface JoinSubmission {
+  id: number;
+  name: string;
+  email: string;
+  /**
+   * All form fields submitted by the applicant
+   */
+  formData?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  status?: ('pending' | 'accepted' | 'rejected' | 'in-review') | null;
+  /**
+   * Internal notes about this application
+   */
+  reviewNotes?: string | null;
+  /**
+   * Email to send when accepting the application
+   */
+  acceptanceEmail?: {
+    subject?: string | null;
+    body?: string | null;
+    sent?: boolean | null;
+    sentAt?: string | null;
+  };
+  /**
+   * Email to send when rejecting the application
+   */
+  rejectionEmail?: {
+    subject?: string | null;
+    body?: string | null;
+    sent?: boolean | null;
+  };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-locked-documents".
  */
 export interface PayloadLockedDocument {
@@ -301,6 +390,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'membersPast';
         value: number | MembersPast;
+      } | null)
+    | ({
+        relationTo: 'contact-submissions';
+        value: number | ContactSubmission;
+      } | null)
+    | ({
+        relationTo: 'join-submissions';
+        value: number | JoinSubmission;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -447,6 +544,54 @@ export interface MembersPastSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "contact-submissions_select".
+ */
+export interface ContactSubmissionsSelect<T extends boolean = true> {
+  name?: T;
+  email?: T;
+  message?: T;
+  formData?: T;
+  status?: T;
+  adminNotes?: T;
+  replyTemplate?:
+    | T
+    | {
+        subject?: T;
+        body?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "join-submissions_select".
+ */
+export interface JoinSubmissionsSelect<T extends boolean = true> {
+  name?: T;
+  email?: T;
+  formData?: T;
+  status?: T;
+  reviewNotes?: T;
+  acceptanceEmail?:
+    | T
+    | {
+        subject?: T;
+        body?: T;
+        sent?: T;
+        sentAt?: T;
+      };
+  rejectionEmail?:
+    | T
+    | {
+        subject?: T;
+        body?: T;
+        sent?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-locked-documents_select".
  */
 export interface PayloadLockedDocumentsSelect<T extends boolean = true> {
@@ -509,8 +654,8 @@ export interface Home {
 export interface About {
   id: number;
   sections: {
-    layout: 'text-image' | 'image-text';
-    title: string;
+    layout: 'text-image' | 'image-text' | 'text-only' | 'image-only';
+    title?: string | null;
     text?: {
       root: {
         type: string;
@@ -570,6 +715,120 @@ export interface Join {
         id?: string | null;
       }[]
     | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "contact".
+ */
+export interface Contact {
+  id: number;
+  title: string;
+  /**
+   * Text shown below the title
+   */
+  description?: string | null;
+  socialLinks?: {
+    linkedin?: string | null;
+    instagram?: string | null;
+  };
+  /**
+   * Optional content displayed above the form
+   */
+  content?: {
+    root: {
+      type: string;
+      children: {
+        type: any;
+        version: number;
+        [k: string]: unknown;
+      }[];
+      direction: ('ltr' | 'rtl') | null;
+      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
+      indent: number;
+      version: number;
+    };
+    [k: string]: unknown;
+  } | null;
+  formFields: {
+    /**
+     * Internal name (e.g., "name", "email", "phone")
+     */
+    name: string;
+    /**
+     * Visible label for the user
+     */
+    label: string;
+    type: 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'checkbox';
+    placeholder?: string | null;
+    required?: boolean | null;
+    rows?: number | null;
+    options?:
+      | {
+          label: string;
+          value: string;
+          id?: string | null;
+        }[]
+      | null;
+    id?: string | null;
+  }[];
+  submitButtonText?: string | null;
+  successMessage?: string | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * Configure email sending settings (SMTP)
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "email-settings".
+ */
+export interface EmailSetting {
+  id: number;
+  provider: 'gmail' | 'sendgrid' | 'mailgun' | 'custom';
+  /**
+   * Turn on to start sending emails
+   */
+  enabled?: boolean | null;
+  gmailSettings?: {
+    user: string;
+    /**
+     * 16-character app password
+     */
+    appPassword: string;
+    /**
+     * Display name in emails
+     */
+    fromName?: string | null;
+  };
+  sendgridSettings?: {
+    apiKey: string;
+    fromEmail: string;
+    fromName?: string | null;
+  };
+  mailgunSettings?: {
+    apiKey: string;
+    domain: string;
+    fromEmail: string;
+    fromName?: string | null;
+  };
+  customSettings?: {
+    host: string;
+    port: number;
+    /**
+     * Enable for port 465
+     */
+    secure?: boolean | null;
+    user: string;
+    password: string;
+    fromEmail: string;
+    fromName?: string | null;
+  };
+  /**
+   * Send a test email to verify settings
+   */
+  testEmail?: string | null;
   updatedAt?: string | null;
   createdAt?: string | null;
 }
@@ -635,6 +894,89 @@ export interface JoinSelect<T extends boolean = true> {
             };
         id?: T;
       };
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "contact_select".
+ */
+export interface ContactSelect<T extends boolean = true> {
+  title?: T;
+  description?: T;
+  socialLinks?:
+    | T
+    | {
+        linkedin?: T;
+        instagram?: T;
+      };
+  content?: T;
+  formFields?:
+    | T
+    | {
+        name?: T;
+        label?: T;
+        type?: T;
+        placeholder?: T;
+        required?: T;
+        rows?: T;
+        options?:
+          | T
+          | {
+              label?: T;
+              value?: T;
+              id?: T;
+            };
+        id?: T;
+      };
+  submitButtonText?: T;
+  successMessage?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "email-settings_select".
+ */
+export interface EmailSettingsSelect<T extends boolean = true> {
+  provider?: T;
+  enabled?: T;
+  gmailSettings?:
+    | T
+    | {
+        user?: T;
+        appPassword?: T;
+        fromName?: T;
+      };
+  sendgridSettings?:
+    | T
+    | {
+        apiKey?: T;
+        fromEmail?: T;
+        fromName?: T;
+      };
+  mailgunSettings?:
+    | T
+    | {
+        apiKey?: T;
+        domain?: T;
+        fromEmail?: T;
+        fromName?: T;
+      };
+  customSettings?:
+    | T
+    | {
+        host?: T;
+        port?: T;
+        secure?: T;
+        user?: T;
+        password?: T;
+        fromEmail?: T;
+        fromName?: T;
+      };
+  testEmail?: T;
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;
