@@ -26,29 +26,31 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
     livePreview: {
-      url: ({ data, documentConfig, locale }) => {
+      url: ({ data, documentConfig }) => {
+        const baseUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
+        
         // Для коллекций с slug
         if ('slug' in data && data.slug) {
-          if (documentConfig.slug === 'events') {
-            return `${process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'}/events/${data.slug}?preview=true`
+          if (documentConfig?.slug === 'events') {
+            return `${baseUrl}/events/${data.slug}?preview=true`
           }
-          if (documentConfig.slug === 'news') {
-            return `${process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'}/news/${data.slug}?preview=true`
+          if (documentConfig?.slug === 'news') {
+            return `${baseUrl}/news/${data.slug}?preview=true`
           }
         }
-        
+
         // Для globals
-        if (documentConfig.slug === 'home') {
-          return `${process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'}?preview=true`
+        if (documentConfig?.slug === 'home') {
+          return `${baseUrl}?preview=true`
         }
-        if (documentConfig.slug === 'about') {
-          return `${process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'}/about?preview=true`
+        if (documentConfig?.slug === 'about') {
+          return `${baseUrl}/about?preview=true`
         }
-        if (documentConfig.slug === 'join') {
-          return `${process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'}/join?preview=true`
+        if (documentConfig?.slug === 'join') {
+          return `${baseUrl}/join?preview=true`
         }
-        
-        return undefined
+
+        return '' // ← Вернуть пустую строку вместо undefined
       },
       breakpoints: [
         { label: 'Mobile', name: 'mobile', width: 375, height: 667 },
