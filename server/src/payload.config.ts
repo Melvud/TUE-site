@@ -20,7 +20,7 @@ import { About } from './globals/About'
 import { JoinUs } from './globals/JoinUs'
 import { Contact } from './globals/Contact'
 import { EmailSettings } from './globals/EmailSettings'
-import { EmailTemplates } from './globals/EmailTemplates' // ← Добавить
+import { EmailTemplates } from './globals/EmailTemplates'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -33,45 +33,52 @@ export default buildConfig({
     },
     livePreview: {
       url: ({ data, collectionConfig, globalConfig }) => {
-        const baseUrl =
-          process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
+        const baseUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
+        const secret = process.env.PAYLOAD_SECRET
 
-        const slug: string | undefined =
-          (data as any)?.slug || (data as any)?.id
+        let targetPath = '/'
 
+        // Определяем путь для коллекций
         if (collectionConfig) {
+          const slug = (data as any)?.slug
+
           switch (collectionConfig.slug) {
             case 'events':
-              return slug
-                ? `${baseUrl}/events/${slug}?preview=true`
-                : `${baseUrl}/events?preview=true`
+              targetPath = slug ? `/events/${slug}` : '/events'
+              break
             case 'news':
-              return slug
-                ? `${baseUrl}/news/${slug}?preview=true`
-                : `${baseUrl}/news?preview=true`
+              targetPath = slug ? `/news/${slug}` : '/news'
+              break
             default:
-              return slug
-                ? `${baseUrl}/${collectionConfig.slug}/${slug}?preview=true`
-                : `${baseUrl}/${collectionConfig.slug}?preview=true`
+              targetPath = '/'
           }
         }
 
+        // Определяем путь для globals
         if (globalConfig) {
           switch (globalConfig.slug) {
             case 'home':
-              return `${baseUrl}?preview=true`
+              targetPath = '/'
+              break
             case 'about':
-              return `${baseUrl}/about?preview=true`
+              targetPath = '/about'
+              break
             case 'join':
-              return `${baseUrl}/join?preview=true`
+              targetPath = '/join'
+              break
             case 'contact':
-              return `${baseUrl}/contact?preview=true`
+              targetPath = '/contact'
+              break
             default:
-              return `${baseUrl}?preview=true`
+              targetPath = '/'
           }
         }
 
-        return baseUrl
+        // Кодируем URL для редиректа
+        const redirect = encodeURIComponent(targetPath)
+
+        // Возвращаем URL с api/preview
+        return `${baseUrl}/api/preview?secret=${secret}&redirect=${redirect}`
       },
       breakpoints: [
         { label: 'Mobile', name: 'mobile', width: 375, height: 667 },
@@ -96,7 +103,7 @@ export default buildConfig({
     JoinUs, 
     Contact, 
     EmailSettings,
-    EmailTemplates, // ← Добавить
+    EmailTemplates,
   ],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',

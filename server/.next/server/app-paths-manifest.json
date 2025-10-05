@@ -1,5 +1,20 @@
 {
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/draft/route": "app/api/draft/route.js",
+  "/api/forms/submit/route": "app/api/forms/submit/route.js",
+  "/api/email/test/route": "app/api/email/test/route.js",
   "/(payload)/api/[...slug]/route": "app/(payload)/api/[...slug]/route.js",
+  "/(payload)/api/graphql/route": "app/(payload)/api/graphql/route.js",
+  "/(payload)/api/graphql-playground/route": "app/(payload)/api/graphql-playground/route.js",
+  "/my-route/route": "app/my-route/route.js",
+  "/api/preview/route": "app/api/preview/route.js",
   "/(payload)/admin/[[...segments]]/page": "app/(payload)/admin/[[...segments]]/page.js",
-  "/(frontend)/page": "app/(frontend)/page.js"
+  "/(frontend)/about/page": "app/(frontend)/about/page.js",
+  "/(frontend)/contact/page": "app/(frontend)/contact/page.js",
+  "/(frontend)/events/page": "app/(frontend)/events/page.js",
+  "/(frontend)/news/page": "app/(frontend)/news/page.js",
+  "/(frontend)/events/[slug]/page": "app/(frontend)/events/[slug]/page.js",
+  "/(frontend)/page": "app/(frontend)/page.js",
+  "/(frontend)/news/[slug]/page": "app/(frontend)/news/[slug]/page.js",
+  "/(frontend)/join/page": "app/(frontend)/join/page.js"
 }

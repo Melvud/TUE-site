@@ -320,7 +320,12 @@ export interface ContactSubmission {
   replyTemplate?: {
     subject?: string | null;
     body?: string | null;
+    /**
+     * Check this box and click Save to send the reply immediately
+     */
+    sendNow?: boolean | null;
     sent?: boolean | null;
+    sentAt?: string | null;
   };
   updatedAt: string;
   createdAt: string;
@@ -363,6 +368,10 @@ export interface JoinSubmission {
      * Available: {{name}}, {{email}}
      */
     body?: string | null;
+    /**
+     * Check this box and click Save to send the email immediately
+     */
+    sendNow?: boolean | null;
     sent?: boolean | null;
     sentAt?: string | null;
   };
@@ -375,7 +384,12 @@ export interface JoinSubmission {
      * Available: {{name}}, {{email}}
      */
     body?: string | null;
+    /**
+     * Check this box and click Save to send the email immediately
+     */
+    sendNow?: boolean | null;
     sent?: boolean | null;
+    sentAt?: string | null;
   };
   updatedAt: string;
   createdAt: string;
@@ -579,7 +593,9 @@ export interface ContactSubmissionsSelect<T extends boolean = true> {
     | {
         subject?: T;
         body?: T;
+        sendNow?: T;
         sent?: T;
+        sentAt?: T;
       };
   updatedAt?: T;
   createdAt?: T;
@@ -600,6 +616,7 @@ export interface JoinSubmissionsSelect<T extends boolean = true> {
     | {
         subject?: T;
         body?: T;
+        sendNow?: T;
         sent?: T;
         sentAt?: T;
       };
@@ -608,7 +625,9 @@ export interface JoinSubmissionsSelect<T extends boolean = true> {
     | {
         subject?: T;
         body?: T;
+        sendNow?: T;
         sent?: T;
+        sentAt?: T;
       };
   updatedAt?: T;
   createdAt?: T;
@@ -697,6 +716,22 @@ export interface About {
     image?: (number | null) | Media;
     id?: string | null;
   }[];
+  supportedByTitle?: string | null;
+  supportedByDescription?: string | null;
+  supportedByLogo?: (number | null) | Media;
+  partnersTitle?: string | null;
+  partnersDescription?: string | null;
+  /**
+   * Add companies that support PhE
+   */
+  partners?:
+    | {
+        name: string;
+        logo: number | Media;
+        website?: string | null;
+        id?: string | null;
+      }[]
+    | null;
   _status?: ('draft' | 'published') | null;
   updatedAt?: string | null;
   createdAt?: string | null;
@@ -921,6 +956,19 @@ export interface AboutSelect<T extends boolean = true> {
         title?: T;
         text?: T;
         image?: T;
+        id?: T;
+      };
+  supportedByTitle?: T;
+  supportedByDescription?: T;
+  supportedByLogo?: T;
+  partnersTitle?: T;
+  partnersDescription?: T;
+  partners?:
+    | T
+    | {
+        name?: T;
+        logo?: T;
+        website?: T;
         id?: T;
       };
   _status?: T;

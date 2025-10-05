@@ -1,14 +1,20 @@
-// src/globals/JoinUs.ts
 import type { GlobalConfig } from 'payload'
 import { lexicalEditor, UploadFeature } from '@payloadcms/richtext-lexical'
 
 export const JoinUs: GlobalConfig = {
-  slug: 'join',            // URL в админке: /admin/globals/join
+  slug: 'join',
   access: { read: () => true },
-  admin: { group: 'Site', 
+  admin: {
+    group: 'Site',
     livePreview: {
-    url: () => `${process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'}?preview=true`,
-  }},
+      url: () => {
+        const baseUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
+        const secret = process.env.PAYLOAD_SECRET
+        const redirect = encodeURIComponent('/join')
+        return `${baseUrl}/api/preview?secret=${secret}&redirect=${redirect}`
+      },
+    },
+  },
   fields: [
     {
       name: 'content',
@@ -20,7 +26,6 @@ export const JoinUs: GlobalConfig = {
           ...defaultFeatures,
           UploadFeature({
             collections: {
-              // поменяй 'media', если у тебя другой slug коллекции медиа
               media: {
                 fields: [
                   {
@@ -55,8 +60,6 @@ export const JoinUs: GlobalConfig = {
         ],
       }),
     },
-
-    // Если используешь форму на странице — оставляем конфиг полей формы
     {
       name: 'formFields',
       label: 'Form Fields',

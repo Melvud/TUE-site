@@ -3,8 +3,14 @@ import type { GlobalConfig } from 'payload'
 export const Home: GlobalConfig = {
   slug: 'home',
   admin: {
+    group: 'Site',
     livePreview: {
-      url: () => `${process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'}?preview=true`,
+      url: () => {
+        const baseUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
+        const secret = process.env.PAYLOAD_SECRET
+        const redirect = encodeURIComponent('/')
+        return `${baseUrl}/api/preview?secret=${secret}&redirect=${redirect}`
+      },
     },
   },
   fields: [
@@ -16,7 +22,7 @@ export const Home: GlobalConfig = {
           name: 'image',
           type: 'upload',
           relationTo: 'media',
-          required: false, // ← Изменили с true на false
+          required: false,
           admin: {
             description: 'Hero background image',
           },

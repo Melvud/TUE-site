@@ -4,6 +4,7 @@ import { draftMode } from 'next/headers'
 import { serializeLexical } from '@/lib/serializeLexical'
 import TeamMemberCard from '@/components/TeamMemberCard'
 import Section from '@/components/Section'
+import PartnersCarousel from '@/components/PartnersCarousel'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,6 +14,17 @@ type AboutGlobal = {
     layout?: 'text-image' | 'image-text' | 'text-only' | 'image-only' | string
     text?: unknown
     image?: { url?: string } | string | null
+  }>
+  supportedByTitle?: string
+  supportedByDescription?: string
+  supportedByLogo?: { url?: string } | string | null
+  partnersTitle?: string
+  partnersDescription?: string
+  partners?: Array<{
+    id?: string
+    name: string
+    logo?: { url?: string } | string | null
+    website?: string | null
   }>
 }
 
@@ -29,6 +41,7 @@ export default async function AboutPage() {
   })) as AboutGlobal
 
   const sections = about?.sections ?? []
+  const partners = about?.partners ?? []
 
   const safeFind = async (collection: KnownMemberCollections) => {
     try {
@@ -37,7 +50,6 @@ export default async function AboutPage() {
         draft: isEnabled,
         limit: 100,
         depth: 2,
-        // ВАЖНО: Сортировка по полю order
         sort: 'order',
       } as any)
       return res?.docs ?? []
@@ -50,6 +62,11 @@ export default async function AboutPage() {
   let pastMembers = await safeFind('pastMembers')
   if (pastMembers.length === 0) pastMembers = await safeFind('membersPast')
 
+  const supportedByLogoUrl =
+    typeof about?.supportedByLogo === 'object' && about.supportedByLogo?.url
+      ? about.supportedByLogo.url
+      : ''
+
   return (
     <main className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
       <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-8 text-center">
@@ -57,6 +74,7 @@ export default async function AboutPage() {
       </h1>
 
       <div className="space-y-12">
+        {/* Content Sections */}
         {sections.map((section, i) => {
           const html =
             section?.text && typeof section.text === 'object'
@@ -180,6 +198,64 @@ export default async function AboutPage() {
             </section>
           )
         })}
+
+        {/* ==================== SUPPORTED BY SECTION ==================== */}
+        {(about.supportedByTitle || about.supportedByDescription || supportedByLogoUrl) && (
+          <section className="py-16 border-t border-b border-slate-800/50">
+            <div className="max-w-3xl mx-auto text-center">
+              {about.supportedByTitle && (
+                <h2 className="text-3xl font-bold mb-4">
+                  <span className="text-cyan-400">
+                    {about.supportedByTitle.split(' ')[0]}
+                  </span>
+                  <span className="text-white">
+                    {' ' + about.supportedByTitle.substring(about.supportedByTitle.indexOf(' ') + 1)}
+                  </span>
+                </h2>
+              )}
+              {about.supportedByDescription && (
+                <p className="text-slate-400 mb-8 text-lg">
+                  {about.supportedByDescription}
+                </p>
+              )}
+              {supportedByLogoUrl && (
+                <div className="flex justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={supportedByLogoUrl}
+                    alt={about.supportedByTitle || 'Main Supporter'}
+                    className="max-h-32 object-contain filter brightness-95 hover:brightness-110 transition-all"
+                  />
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* ==================== PARTNERS CAROUSEL ==================== */}
+        {partners.length > 0 && (
+          <section className="py-16">
+            <div className="text-center mb-12">
+              {about.partnersTitle && (
+                <h2 className="text-3xl font-bold mb-4">
+                  <span className="text-cyan-400">
+                    {about.partnersTitle.split(' ')[0]}
+                  </span>
+                  <span className="text-white">
+                    {' ' + about.partnersTitle.substring(about.partnersTitle.indexOf(' ') + 1)}
+                  </span>
+                </h2>
+              )}
+              {about.partnersDescription && (
+                <p className="text-slate-400 max-w-3xl mx-auto text-lg">
+                  {about.partnersDescription}
+                </p>
+              )}
+            </div>
+
+            <PartnersCarousel partners={partners} />
+          </section>
+        )}
 
         {/* Members */}
         {members.length > 0 && (

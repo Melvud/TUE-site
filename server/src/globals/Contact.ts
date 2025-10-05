@@ -7,7 +7,12 @@ export const Contact: GlobalConfig = {
   admin: {
     group: 'Site',
     livePreview: {
-      url: () => `${process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'}/contact?preview=true`,
+      url: () => {
+        const baseUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
+        const secret = process.env.PAYLOAD_SECRET
+        const redirect = encodeURIComponent('/contact')
+        return `${baseUrl}/api/preview?secret=${secret}&redirect=${redirect}`
+      },
     },
   },
   fields: [

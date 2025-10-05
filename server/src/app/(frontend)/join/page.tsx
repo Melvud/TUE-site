@@ -19,8 +19,37 @@ export default async function JoinUsPage() {
 
   const html = join?.content ? serializeLexical(join.content as any) : ''
 
-  // Безопасное получение formFields с fallback
-  const formFields = Array.isArray(join?.formFields) ? join.formFields : []
+  // Берём поля формы и приводим к ожидаемому виду
+  const formFields = (Array.isArray(join?.formFields) ? join.formFields : []).map((f: any) => {
+    const { id, options, placeholder, required, rows, ...rest } = f || {}
+
+    return {
+      ...rest,
+      // id допускает только string | undefined
+      ...(id ? { id: String(id) } : {}),
+      // placeholder: string | null | undefined - исправляем проверку
+      ...(placeholder !== undefined && placeholder !== null ? { placeholder: String(placeholder) } : {}),
+      // required: только boolean
+      required: Boolean(required),
+      // rows для textarea
+      ...(rows !== undefined && rows !== null ? { rows: Number(rows) } : {}),
+      // options: чистим id внутри options
+      ...(Array.isArray(options)
+        ? {
+            options: options.map((o: any) => {
+              if (!o) return { value: '' }
+              const { id: oid, value, label, ...or } = o
+              return {
+                ...or,
+                value: value || '',
+                ...(label ? { label: String(label) } : {}),
+                ...(oid ? { id: String(oid) } : {}),
+              }
+            }),
+          }
+        : {}),
+    }
+  })
 
   return (
     <div className="bg-slate-900 text-white">

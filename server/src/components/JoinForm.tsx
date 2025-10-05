@@ -9,6 +9,7 @@ type Field = {
   type: string
   required?: boolean
   placeholder?: string | null
+  rows?: number | null
   options?: Array<{ value: string; id?: string }> | null
 }
 
@@ -18,14 +19,15 @@ export default function JoinForm({ fields = [] }: { fields?: Field[] }) {
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    
-    // ✅ Сохраняем ссылку на форму ДО асинхронной операции
+
     const form = e.currentTarget
-    
+
     setBusy(true)
     setSent(null)
 
     const formData = Object.fromEntries(new FormData(form).entries())
+
+    console.log('📝 Join form data:', formData)
 
     try {
       const res = await fetch('/api/forms/submit', {
@@ -38,11 +40,15 @@ export default function JoinForm({ fields = [] }: { fields?: Field[] }) {
         }),
       })
 
-      if (!res.ok) throw new Error('Failed to submit')
+      if (!res.ok) {
+        const errorData = await res.json()
+        throw new Error(errorData.error || 'Failed to submit')
+      }
 
       setSent('ok')
-      form.reset() // ✅ Используем сохраненную ссылку
+      form.reset()
     } catch (err: any) {
+      console.error('❌ Form submit error:', err)
       setSent(err?.message ?? 'Failed to submit')
     } finally {
       setBusy(false)
@@ -53,7 +59,7 @@ export default function JoinForm({ fields = [] }: { fields?: Field[] }) {
     <form onSubmit={onSubmit} className="max-w-2xl mx-auto space-y-6">
       {fields.map((field) => {
         const fieldKey = field.id || field.name
-        
+
         if (field.type === 'textarea') {
           return (
             <div key={fieldKey}>
@@ -63,7 +69,7 @@ export default function JoinForm({ fields = [] }: { fields?: Field[] }) {
                 required={field.required}
                 placeholder={field.placeholder || ''}
                 className="w-full bg-slate-800 p-3 rounded text-white"
-                rows={4}
+                rows={field.rows || 4}
               />
             </div>
           )

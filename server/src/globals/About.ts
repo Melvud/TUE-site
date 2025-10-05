@@ -41,13 +41,16 @@ export const About: GlobalConfig = {
   access: { read: () => true },
   versions: { drafts: true },
 
-  admin: {
+  // Замените только секцию admin в About.ts:
+admin: {
+    group: 'Site',
     description: 'About page content',
     livePreview: {
       url: () => {
-        const base = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
+        const baseUrl = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3000'
+        const secret = process.env.PAYLOAD_SECRET
         const redirect = encodeURIComponent('/about')
-        return `${base}/api/preview?redirect=${redirect}`
+        return `${baseUrl}/api/preview?secret=${secret}&redirect=${redirect}`
       },
       breakpoints: [
         { label: 'Mobile', name: 'mobile', width: 375, height: 667 },
@@ -60,7 +63,7 @@ export const About: GlobalConfig = {
   fields: [
     {
       name: 'sections',
-      label: 'Sections',
+      label: 'Content Sections',
       type: 'array',
       required: true,
       admin: { initCollapsed: false },
@@ -84,7 +87,6 @@ export const About: GlobalConfig = {
           type: 'text', 
           required: false,
         },
-
         {
           name: 'text',
           label: 'Text',
@@ -105,7 +107,6 @@ export const About: GlobalConfig = {
             ],
           }),
         },
-
         {
           name: 'image',
           label: 'Image',
@@ -116,6 +117,97 @@ export const About: GlobalConfig = {
             condition: (data, siblingData) => 
               siblingData?.layout !== 'text-only',
           },
+        },
+      ],
+    },
+
+    // ==================== SUPPORTED BY SECTION ====================
+    {
+      type: 'collapsible',
+      label: '🤝 Supported By Section',
+      admin: {
+        initCollapsed: false,
+      },
+      fields: [
+        {
+          name: 'supportedByTitle',
+          label: 'Title',
+          type: 'text',
+          defaultValue: 'Supported by Optica',
+        },
+        {
+          name: 'supportedByDescription',
+          label: 'Description',
+          type: 'textarea',
+          defaultValue: 'PhE is an Optica Student Chapter supported by Optica (formerly OSA).',
+          admin: {
+            rows: 3,
+          },
+        },
+        {
+          name: 'supportedByLogo',
+          label: 'Main Supporter Logo (e.g., Optica)',
+          type: 'upload',
+          relationTo: 'media',
+          required: false,
+        },
+      ],
+    },
+
+    // ==================== PARTNERS CAROUSEL ====================
+    {
+      type: 'collapsible',
+      label: '🎡 Partners & Hosts Carousel',
+      admin: {
+        initCollapsed: false,
+      },
+      fields: [
+        {
+          name: 'partnersTitle',
+          label: 'Title',
+          type: 'text',
+          defaultValue: 'Partners & Hosts',
+        },
+        {
+          name: 'partnersDescription',
+          label: 'Description',
+          type: 'textarea',
+          defaultValue: 'These partners help make PhE events possible. Some have hosted lab/company tours, some have shared speakers and expertise, and others have supported specific activities. Thank you for opening doors to the Eindhoven photonics community.',
+          admin: {
+            rows: 4,
+          },
+        },
+        {
+          name: 'partners',
+          label: 'Partner Companies',
+          type: 'array',
+          admin: {
+            initCollapsed: true,
+            description: 'Add companies that support PhE',
+          },
+          fields: [
+            {
+              name: 'name',
+              label: 'Company Name',
+              type: 'text',
+              required: true,
+            },
+            {
+              name: 'logo',
+              label: 'Company Logo',
+              type: 'upload',
+              relationTo: 'media',
+              required: true,
+            },
+            {
+              name: 'website',
+              label: 'Website URL (optional)',
+              type: 'text',
+              admin: {
+                placeholder: 'https://example.com',
+              },
+            },
+          ],
         },
       ],
     },

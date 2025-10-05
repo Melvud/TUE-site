@@ -23,18 +23,14 @@ export const JoinSubmissions: CollectionConfig = {
       label: 'Name',
       type: 'text',
       required: true,
-      admin: {
-        readOnly: true,
-      },
+      admin: { readOnly: true },
     },
     {
       name: 'email',
       label: 'Email',
       type: 'email',
       required: true,
-      admin: {
-        readOnly: true,
-      },
+      admin: { readOnly: true },
     },
     {
       name: 'formData',
@@ -56,9 +52,7 @@ export const JoinSubmissions: CollectionConfig = {
         { label: '❌ Rejected', value: 'rejected' },
         { label: '📝 In Review', value: 'in-review' },
       ],
-      admin: {
-        position: 'sidebar',
-      },
+      admin: { position: 'sidebar' },
     },
     {
       name: 'reviewNotes',
@@ -89,22 +83,32 @@ export const JoinSubmissions: CollectionConfig = {
       fields: [
         {
           name: 'subject',
-          label: 'Subject',
+          label: 'Subject (optional override)',
           type: 'text',
           admin: {
-            placeholder: 'Uses default from Email Templates if empty',
+            placeholder: 'Leave empty to use default from Email Templates',
             condition: (data) => data.useCustomTemplate,
           },
         },
         {
           name: 'body',
-          label: 'Email Body',
+          label: 'Email Body (optional override)',
           type: 'textarea',
           admin: {
             rows: 10,
-            placeholder: 'Uses default from Email Templates if empty',
+            placeholder: 'Leave empty to use default from Email Templates',
             description: 'Available: {{name}}, {{email}}',
             condition: (data) => data.useCustomTemplate,
+          },
+        },
+        {
+          name: 'sendNow',
+          label: '✉️ Send Email Now',
+          type: 'checkbox',
+          defaultValue: false,
+          admin: {
+            description: 'Check this box and click Save to send the email immediately',
+            condition: (data) => !data.acceptanceEmail?.sent,
           },
         },
         {
@@ -112,9 +116,7 @@ export const JoinSubmissions: CollectionConfig = {
           label: 'Email Sent',
           type: 'checkbox',
           defaultValue: false,
-          admin: {
-            readOnly: true,
-          },
+          admin: { readOnly: true },
         },
         {
           name: 'sentAt',
@@ -122,9 +124,7 @@ export const JoinSubmissions: CollectionConfig = {
           type: 'date',
           admin: {
             readOnly: true,
-            date: {
-              pickerAppearance: 'dayAndTime',
-            },
+            date: { pickerAppearance: 'dayAndTime' },
           },
         },
       ],
@@ -140,22 +140,32 @@ export const JoinSubmissions: CollectionConfig = {
       fields: [
         {
           name: 'subject',
-          label: 'Subject',
+          label: 'Subject (optional override)',
           type: 'text',
           admin: {
-            placeholder: 'Uses default from Email Templates if empty',
+            placeholder: 'Leave empty to use default from Email Templates',
             condition: (data) => data.useCustomTemplate,
           },
         },
         {
           name: 'body',
-          label: 'Email Body',
+          label: 'Email Body (optional override)',
           type: 'textarea',
           admin: {
             rows: 8,
-            placeholder: 'Uses default from Email Templates if empty',
+            placeholder: 'Leave empty to use default from Email Templates',
             description: 'Available: {{name}}, {{email}}',
             condition: (data) => data.useCustomTemplate,
+          },
+        },
+        {
+          name: 'sendNow',
+          label: '✉️ Send Email Now',
+          type: 'checkbox',
+          defaultValue: false,
+          admin: {
+            description: 'Check this box and click Save to send the email immediately',
+            condition: (data) => !data.rejectionEmail?.sent,
           },
         },
         {
@@ -163,103 +173,232 @@ export const JoinSubmissions: CollectionConfig = {
           label: 'Email Sent',
           type: 'checkbox',
           defaultValue: false,
+          admin: { readOnly: true },
+        },
+        {
+          name: 'sentAt',
+          label: 'Sent At',
+          type: 'date',
           admin: {
             readOnly: true,
+            date: { pickerAppearance: 'dayAndTime' },
           },
         },
       ],
     },
   ],
   hooks: {
-    afterChange: [
-      async ({ doc, previousDoc, req, operation }) => {
-        if (operation === 'update') {
-          const statusChanged = previousDoc?.status !== doc.status
+    beforeChange: [
+      async ({ data, req, operation, originalDoc }) => {
+        if (operation !== 'update') return data
 
-          // Acceptance email
-          if (
-            statusChanged &&
-            doc.status === 'accepted' &&
-            !doc.acceptanceEmail?.sent
-          ) {
-            try {
-              const { sendAcceptanceEmail } = await import('@/lib/email')
-              
-              // Используем кастомный шаблон если указан, иначе из БД
-              const customTemplate = doc.useCustomTemplate && doc.acceptanceEmail?.subject && doc.acceptanceEmail?.body
-                ? {
-                    subject: doc.acceptanceEmail.subject,
-                    body: doc.acceptanceEmail.body,
-                  }
-                : undefined
-              
-              const success = await sendAcceptanceEmail(
-                doc.email,
-                doc.name,
-                customTemplate
-              )
-              
-              if (success) {
-                console.log('✅ Acceptance email sent to:', doc.email)
-                
-                await req.payload.update({
-                  collection: 'join-submissions',
-                  id: doc.id,
-                  data: {
-                    acceptanceEmail: {
-                      ...doc.acceptanceEmail,
-                      sent: true,
-                      sentAt: new Date().toISOString(),
-                    },
-                  },
-                })
-              }
-            } catch (error) {
-              console.error('❌ Failed to send acceptance email:', error)
-            }
+        const statusChanged = originalDoc?.status !== data.status
+
+        console.log('🔍 JoinSubmissions beforeChange:', {
+          statusChanged,
+          newStatus: data.status,
+          previousStatus: originalDoc?.status,
+          originalAcceptanceSent: originalDoc?.acceptanceEmail?.sent,
+          originalRejectionSent: originalDoc?.rejectionEmail?.sent,
+          dataAcceptanceEmail: data.acceptanceEmail,
+          dataRejectionEmail: data.rejectionEmail,
+        })
+
+        // ==================== ACCEPTANCE EMAIL ====================
+        if (data.status === 'accepted') {
+          // Инициализируем acceptanceEmail если его нет
+          if (!data.acceptanceEmail) {
+            data.acceptanceEmail = {}
           }
 
-          // Rejection email
-          if (
-            statusChanged &&
-            doc.status === 'rejected' &&
-            !doc.rejectionEmail?.sent
-          ) {
-            try {
-              const { sendRejectionEmail } = await import('@/lib/email')
-              
-              const customTemplate = doc.useCustomTemplate && doc.rejectionEmail?.subject && doc.rejectionEmail?.body
-                ? {
-                    subject: doc.rejectionEmail.subject,
-                    body: doc.rejectionEmail.body,
-                  }
-                : undefined
-              
-              const success = await sendRejectionEmail(
-                doc.email,
-                doc.name,
-                customTemplate
-              )
-              
-              if (success) {
-                console.log('✅ Rejection email sent to:', doc.email)
-                
-                await req.payload.update({
-                  collection: 'join-submissions',
-                  id: doc.id,
-                  data: {
-                    rejectionEmail: {
-                      ...doc.rejectionEmail,
-                      sent: true,
-                    },
-                  },
+          // Проверяем, было ли уже отправлено
+          const alreadySent = originalDoc?.acceptanceEmail?.sent === true
+
+          console.log('📧 Acceptance email check:', {
+            alreadySent,
+            statusChanged,
+            sendNow: data.acceptanceEmail?.sendNow,
+            originalSendNow: originalDoc?.acceptanceEmail?.sendNow,
+          })
+
+          if (!alreadySent) {
+            // Отправляем если:
+            // 1. Статус изменился на accepted (автоматически)
+            // 2. Галочка sendNow установлена (вручную)
+            const shouldSend =
+              statusChanged || (data.acceptanceEmail?.sendNow && !originalDoc?.acceptanceEmail?.sendNow)
+
+            console.log('📧 Should send acceptance:', shouldSend)
+
+            if (shouldSend) {
+              try {
+                console.log('📧 Attempting to send acceptance email to:', data.email)
+
+                const emailSettings = await req.payload.findGlobal({
+                  slug: 'email-settings',
                 })
+
+                console.log('📧 Email settings loaded:', {
+                  enabled: emailSettings.enabled,
+                  provider: (emailSettings as any).provider,
+                })
+
+                if (!emailSettings.enabled) {
+                  console.warn('⚠️ Email sending is disabled in settings')
+                  return data
+                }
+
+                const templates = await req.payload.findGlobal({
+                  slug: 'email-templates',
+                })
+
+                console.log('📧 Templates loaded:', {
+                  hasAcceptanceSubject: !!(templates as any)?.acceptanceSubject,
+                  hasAcceptanceBody: !!(templates as any)?.acceptanceBody,
+                })
+
+                const { sendAcceptanceEmail } = await import('@/lib/email')
+
+                // Используем кастомное ИЛИ дефолтное (приоритет дефолту если пусто)
+                const subject =
+                  (data.useCustomTemplate && data.acceptanceEmail?.subject?.trim()) ||
+                  (templates as any)?.acceptanceSubject ||
+                  'Welcome to Photonics Society Eindhoven'
+
+                const body =
+                  (data.useCustomTemplate && data.acceptanceEmail?.body?.trim()) ||
+                  (templates as any)?.acceptanceBody ||
+                  `Hello {{name}},\n\nCongratulations! Your application has been accepted.\n\nBest regards,\nPhE Team`
+
+                console.log('📧 Sending acceptance with:', {
+                  subject,
+                  bodyLength: body.length,
+                  useCustom: data.useCustomTemplate,
+                })
+
+                const success = await sendAcceptanceEmail(
+                  data.email,
+                  data.name,
+                  subject,
+                  body,
+                  emailSettings as any
+                )
+
+                if (success) {
+                  console.log('✅ Acceptance email sent to:', data.email)
+
+                  data.acceptanceEmail = {
+                    ...data.acceptanceEmail,
+                    sendNow: false,
+                    sent: true,
+                    sentAt: new Date().toISOString(),
+                  }
+                } else {
+                  console.error('❌ Failed to send acceptance email')
+                }
+              } catch (error) {
+                console.error('❌ Error sending acceptance email:', error)
+                if (error instanceof Error) {
+                  console.error('Error details:', error.message)
+                  console.error('Error stack:', error.stack)
+                }
               }
-            } catch (error) {
-              console.error('❌ Failed to send rejection email:', error)
             }
+          } else {
+            console.log('⏭️ Acceptance email already sent, skipping')
           }
         }
+
+        // ==================== REJECTION EMAIL ====================
+        if (data.status === 'rejected') {
+          // Инициализируем rejectionEmail если его нет
+          if (!data.rejectionEmail) {
+            data.rejectionEmail = {}
+          }
+
+          const alreadySent = originalDoc?.rejectionEmail?.sent === true
+
+          console.log('📧 Rejection email check:', {
+            alreadySent,
+            statusChanged,
+            sendNow: data.rejectionEmail?.sendNow,
+          })
+
+          if (!alreadySent) {
+            const shouldSend =
+              statusChanged || (data.rejectionEmail?.sendNow && !originalDoc?.rejectionEmail?.sendNow)
+
+            console.log('📧 Should send rejection:', shouldSend)
+
+            if (shouldSend) {
+              try {
+                console.log('📧 Attempting to send rejection email to:', data.email)
+
+                const emailSettings = await req.payload.findGlobal({
+                  slug: 'email-settings',
+                })
+
+                if (!emailSettings.enabled) {
+                  console.warn('⚠️ Email sending is disabled in settings')
+                  return data
+                }
+
+                const templates = await req.payload.findGlobal({
+                  slug: 'email-templates',
+                })
+
+                const { sendRejectionEmail } = await import('@/lib/email')
+
+                const subject =
+                  (data.useCustomTemplate && data.rejectionEmail?.subject?.trim()) ||
+                  (templates as any)?.rejectionSubject ||
+                  'Regarding your PhE application'
+
+                const body =
+                  (data.useCustomTemplate && data.rejectionEmail?.body?.trim()) ||
+                  (templates as any)?.rejectionBody ||
+                  `Hello {{name}},\n\nThank you for your interest in Photonics Society Eindhoven.\nAfter careful consideration, we won't be moving forward at this time.\n\nBest regards,\nPhE Team`
+
+                console.log('📧 Sending rejection with:', {
+                  subject,
+                  bodyLength: body.length,
+                  useCustom: data.useCustomTemplate,
+                })
+
+                const success = await sendRejectionEmail(
+                  data.email,
+                  data.name,
+                  subject,
+                  body,
+                  emailSettings as any
+                )
+
+                if (success) {
+                  console.log('✅ Rejection email sent to:', data.email)
+
+                  data.rejectionEmail = {
+                    ...data.rejectionEmail,
+                    sendNow: false,
+                    sent: true,
+                    sentAt: new Date().toISOString(),
+                  }
+                } else {
+                  console.error('❌ Failed to send rejection email')
+                }
+              } catch (error) {
+                console.error('❌ Error sending rejection email:', error)
+                if (error instanceof Error) {
+                  console.error('Error details:', error.message)
+                  console.error('Error stack:', error.stack)
+                }
+              }
+            }
+          } else {
+            console.log('⏭️ Rejection email already sent, skipping')
+          }
+        }
+
+        return data
       },
     ],
   },
